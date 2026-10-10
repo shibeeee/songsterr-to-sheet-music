@@ -25,4 +25,9 @@ for (const file of ['sonivox.sf2', 'LICENSE', 'README.md']) {
 
 // Tell GitHub Pages not to run Jekyll over the files.
 await writeFile(join(OUT, '.nojekyll'), '');
+
+// Site settings read by the page. RELAY_URL points at an optional relay
+// (see relay/worker.js) that lets the site fetch from Songsterr reliably.
+const relay = (process.env.RELAY_URL || '').trim();
+await writeFile(join(OUT, 'config.json'), JSON.stringify({ relay }, null, 2));
 console.log(`Static site written to ${OUT}`);

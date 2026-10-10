@@ -2,11 +2,13 @@
 //   /                     the app (public/)
 //   /vendor/alphatab/*    alphaTab's browser build, fonts and soundfont
 //   /api/songsterr?url=   fetches a song from Songsterr and returns its tracks as JSON
+//   /api/search?q=        searches Songsterr
+//   /api/health           lets the page know a server is available
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fetchSongsterrSong, SongsterrError } from './lib/songsterr.js';
+import { createServerGetter, fetchSongsterrSong, searchSongsterr, SongsterrError } from './public/js/songsterr.js';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const PUBLIC_DIR = join(ROOT, 'public');
@@ -17,6 +19,7 @@ const HOST = process.env.HOST || '127.0.0.1';
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_MAX = 50;
 const cache = new Map();
+const get = createServerGetter();
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -54,23 +57,22 @@ async function serveFile(res, baseDir, relPath) {
   }
 }
 
-async function handleSongsterr(res, query) {
-  const link = query.get('url');
-  if (!link) return send(res, 400, JSON.stringify({ error: 'Missing ?url=' }));
+async function cached(key, produce) {
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.body;
+  const body = JSON.stringify(await produce());
+  cache.set(key, { at: Date.now(), body });
+  if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
+  return body;
+}
 
-  const hit = cache.get(link);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return send(res, 200, hit.body);
-
+async function handleApi(res, key, produce) {
   try {
-    const song = await fetchSongsterrSong(link);
-    const body = JSON.stringify(song);
-    cache.set(link, { at: Date.now(), body });
-    if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
-    send(res, 200, body);
+    send(res, 200, await cached(key, produce));
   } catch (err) {
     const status = err instanceof SongsterrError ? err.status : 502;
     const message = err instanceof SongsterrError ? err.message : `Songsterr request failed: ${err.message}`;
-    console.warn(`[songsterr] ${link}: ${message}`);
+    console.warn(`[songsterr] ${key}: ${message}`);
     send(res, status, JSON.stringify({ error: message }));
   }
 }
@@ -80,7 +82,17 @@ export function createAppServer() {
     const url = new URL(req.url, 'http://localhost');
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed', 'text/plain');
 
-    if (url.pathname === '/api/songsterr') return handleSongsterr(res, url.searchParams);
+    if (url.pathname === '/api/health') return send(res, 200, JSON.stringify({ ok: true }));
+    if (url.pathname === '/api/songsterr') {
+      const link = url.searchParams.get('url');
+      if (!link) return send(res, 400, JSON.stringify({ error: 'Missing ?url=' }));
+      return handleApi(res, `song:${link}`, () => fetchSongsterrSong(link, { get }));
+    }
+    if (url.pathname === '/api/search') {
+      const q = (url.searchParams.get('q') || '').trim();
+      if (!q) return send(res, 400, JSON.stringify({ error: 'Missing ?q=' }));
+      return handleApi(res, `search:${q.toLowerCase()}`, () => searchSongsterr(q, { get }));
+    }
     if (url.pathname.startsWith('/vendor/alphatab/')) {
       return serveFile(res, ALPHATAB_DIR, decodeURIComponent(url.pathname.slice('/vendor/alphatab/'.length)));
     }

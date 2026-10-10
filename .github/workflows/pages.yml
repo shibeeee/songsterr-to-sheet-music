@@ -26,6 +26,10 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+        env:
+          # Optional: URL of your relay (see relay/worker.js), set under
+          # Settings > Secrets and variables > Actions > Variables.
+          RELAY_URL: ${{ vars.RELAY_URL }}
       # Needs Settings > Pages > Source set to "GitHub Actions" (one-time).
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

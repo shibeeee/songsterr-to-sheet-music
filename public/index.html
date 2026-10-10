@@ -5,137 +5,236 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Tab to Sheet</title>
   <meta name="description" content="Turn Songsterr tabs into printable sheet music: standard notation, tablature, or both." />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23233a5e'/%3E%3Cpath d='M20 6v14.5a4 4 0 1 1-2-3.46V10l-6 1.5v11a4 4 0 1 1-2-3.46V8z' fill='%23fff'/%3E%3C/svg%3E" />
+  <meta name="color-scheme" content="light dark" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2318181b'/%3E%3Cg stroke='%23fff' stroke-width='1.6'%3E%3Cpath d='M7 10h18M7 14h18M7 18h18M7 22h18'/%3E%3C/g%3E%3Ccircle cx='13' cy='20' r='3' fill='%23fff'/%3E%3Cpath d='M15.6 20V8.5' stroke='%23fff' stroke-width='1.8'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
-<body>
-  <header class="site-header no-print">
-    <div class="brand">
-      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" /><path d="M20 6v14.5a4 4 0 1 1-2-3.46V10l-6 1.5v11a4 4 0 1 1-2-3.46V8z" /></svg>
-      <div>
-        <h1>Tab to Sheet</h1>
-        <p class="tagline">Songsterr links to printable sheet music</p>
-      </div>
+<body data-view="home">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" class="fill" /></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5h3v14H8zM13 5h3v14h-3z" class="fill" /></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><path d="M7 7h10v10H7z" class="fill" /></symbol>
+      <symbol id="i-loop" viewBox="0 0 24 24"><path d="M17 2.5 20.5 6 17 9.5" /><path d="M3.5 11V9a3 3 0 0 1 3-3h14" /><path d="M7 21.5 3.5 18 7 14.5" /><path d="M20.5 13v2a3 3 0 0 1-3 3h-14" /></symbol>
+      <symbol id="i-metronome" viewBox="0 0 24 24"><path d="M9.5 3h5l4 18h-13z" /><path d="m12 16 5-9" /><path d="M7.4 14h9.2" /></symbol>
+      <symbol id="i-countin" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5" /><path d="M9.5 2.5h5" /></symbol>
+      <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3h10v6" /><rect x="3" y="9" width="18" height="8" rx="1.5" /><path d="M7 14h10v7H7z" /></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11" /><path d="m7 10.5 5 5 5-5" /><path d="M4.5 20h15" /></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1" /><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" /></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></symbol>
+      <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" /><path d="M15.5 9a4.5 4.5 0 0 1 0 6" /><path d="M18 6.5a8 8 0 0 1 0 11" /></symbol>
+      <symbol id="i-muted" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" /><path d="m16 9.5 5 5M21 9.5l-5 5" /></symbol>
+      <symbol id="i-headphones" viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3" /><rect x="3.5" y="14" width="4.5" height="6.5" rx="1.5" /><rect x="16" y="14" width="4.5" height="6.5" rx="1.5" /></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5 8 12l7 7" /></symbol>
+    </defs>
+  </svg>
+
+  <header class="topbar">
+    <a class="wordmark" href="./" id="home-link" aria-label="Tab to Sheet, home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><g class="staff"><path d="M3 10h26M3 14h26M3 18h26M3 22h26" /></g><circle cx="12" cy="20" r="3.2" /><path class="stem" d="M14.9 20V7" /></svg>
+      <span>Tab to Sheet</span>
+    </a>
+
+    <form class="search compact" id="top-search" role="search" autocomplete="off">
+      <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
+      <label for="top-search-input" class="visually-hidden">Songsterr link or song name</label>
+      <input id="top-search-input" name="q" type="text" spellcheck="false" placeholder="Songsterr link or song name" />
+    </form>
+
+    <div class="topbar-actions">
+      <label class="btn ghost" title="Open a Guitar Pro, MusicXML or saved JSON file">
+        <svg class="icon" aria-hidden="true"><use href="#i-file" /></svg>
+        <span class="label">Open file</span>
+        <input class="file-input" type="file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml,.mxl,.json,.atex,.alphatex,.txt" />
+      </label>
+      <button type="button" class="btn ghost options-toggle" id="sidebar-toggle" aria-controls="sidebar" aria-expanded="false">
+        <svg class="icon" aria-hidden="true"><use href="#i-sliders" /></svg>
+        <span class="label">Options</span>
+      </button>
     </div>
   </header>
 
   <main>
-    <section class="loader no-print" aria-label="Load a song">
-      <form id="url-form" class="url-form" autocomplete="off">
-        <label for="url-input" class="visually-hidden">Songsterr link</label>
-        <input id="url-input" name="url" type="text" inputmode="url" spellcheck="false"
-               placeholder="Paste a Songsterr link, e.g. https://www.songsterr.com/a/wsa/artist-song-tab-s12345" />
-        <button type="submit" class="btn primary" id="convert-btn">Convert</button>
-      </form>
-      <div class="loader-alt">
-        <span>or</span>
-        <label class="btn ghost file-btn">
-          Open a file
-          <input id="file-input" type="file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml,.mxl,.json,.atex,.alphatex,.txt" />
-        </label>
-        <button type="button" class="btn ghost" id="demo-btn">Try the demo</button>
-        <span class="hint">Guitar Pro, MusicXML, alphaTex, or a saved Songsterr JSON. You can also drop a file anywhere.</span>
-      </div>
-      <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+    <!-- Home -------------------------------------------------------------->
+    <section id="home" class="home" aria-labelledby="home-title">
+      <div class="home-inner">
+        <h1 id="home-title">Sheet music from any Songsterr tab</h1>
+        <p class="lede">Paste a link or search for a song, then print it as standard notation, tablature, or both.</p>
 
-      <details id="bookmark-help" class="bookmark-help">
-        <summary>Get any song from Songsterr in one click</summary>
-        <div class="bookmark-body">
-          <ol>
-            <li>Drag this button to your bookmarks bar:
-              <a id="bookmarklet" class="bookmarklet" href="#" title="Drag me to your bookmarks bar">&#9835; Tab to Sheet</a>
-            </li>
-            <li>Open any song on <a href="https://www.songsterr.com" target="_blank" rel="noopener">songsterr.com</a><a id="open-on-songsterr" target="_blank" rel="noopener" hidden> (open this one)</a>.</li>
-            <li>Click the bookmark. The song opens here as sheet music.</li>
-          </ol>
-          <p class="hint">No bookmarks bar? Press Ctrl+Shift+B (Cmd+Shift+B on a Mac) to show it. If your browser blocks the pop-up, the bookmark saves the song as a .json file instead; open it here with "Open a file".</p>
-        </div>
-      </details>
+        <form class="search large" id="home-search" role="search" autocomplete="off">
+          <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
+          <label for="home-search-input" class="visually-hidden">Songsterr link or song name</label>
+          <input id="home-search-input" name="q" type="text" spellcheck="false" autofocus
+                 placeholder="https://www.songsterr.com/a/wsa/…  or  artist and song" />
+          <button type="submit" class="btn primary">Go</button>
+        </form>
+
+        <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+
+        <ol id="results" class="results" hidden aria-label="Search results"></ol>
+
+        <p class="alt">
+          Or <label class="linklike">open a file<input class="file-input" type="file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml,.mxl,.json,.atex,.alphatex,.txt" /></label>
+          (Guitar Pro, MusicXML, saved Songsterr data), or <button type="button" class="linklike" id="demo-btn">look at an example</button>.
+        </p>
+
+        <p id="back-to-score" class="back-to-score" hidden>
+          <button type="button" class="linklike" id="back-btn"><svg class="icon" aria-hidden="true"><use href="#i-back" /></svg><span></span></button>
+        </p>
+
+        <section id="recent" class="recent" hidden aria-labelledby="recent-title">
+          <h2 id="recent-title">Recent</h2>
+          <ul id="recent-list"></ul>
+        </section>
+
+        <details id="more-ways" class="more-ways">
+          <summary>If a Songsterr link won't load</summary>
+          <div class="more-body">
+            <p>Songsterr sometimes blocks other websites from reading its tabs. When that happens, any of these will still work:</p>
+            <h3>Use the bookmark</h3>
+            <ol>
+              <li>Drag <a id="bookmarklet" class="bookmarklet" href="#" title="Drag to your bookmarks bar">Tab to Sheet</a> to your bookmarks bar.</li>
+              <li>Open the song on songsterr.com<a id="open-on-songsterr" target="_blank" rel="noopener" hidden> (open it now)</a> and click the bookmark.</li>
+            </ol>
+            <h3>Use your own relay</h3>
+            <p>A relay is a tiny free service that fetches from Songsterr for this page. Instructions are in <a href="https://github.com/shibeeee/songsterr-to-sheet-music/blob/HEAD/relay/worker.js" target="_blank" rel="noopener">relay/worker.js</a>. Paste its address here:</p>
+            <form id="relay-form" class="relay-form">
+              <label for="relay-input" class="visually-hidden">Relay address</label>
+              <input id="relay-input" type="url" placeholder="https://your-relay.workers.dev" spellcheck="false" />
+              <button type="submit" class="btn">Save</button>
+            </form>
+            <h3>Run it on your computer</h3>
+            <p>With Node.js installed, <code>npm install</code> then <code>npm start</code> in a copy of the <a href="https://github.com/shibeeee/songsterr-to-sheet-music" target="_blank" rel="noopener">project</a>. Links always work there.</p>
+          </div>
+        </details>
+      </div>
+
+      <footer class="site-footer">
+        <p>Notation and playback by <a href="https://alphatab.net" target="_blank" rel="noopener">alphaTab</a>. Tabs come from Songsterr and its contributors; please respect their terms and the songwriters' rights. For personal practice.</p>
+      </footer>
     </section>
 
-    <section id="workspace" class="workspace" hidden>
-      <div class="toolbar no-print" role="toolbar" aria-label="Score options">
-        <div class="song-info">
-          <h2 id="song-title"></h2>
+    <!-- Viewer ------------------------------------------------------------->
+    <section id="viewer" class="viewer" hidden aria-label="Score">
+      <aside id="sidebar" class="sidebar" aria-label="Score options">
+        <div class="song-head">
+          <h1 id="song-title"></h1>
           <p id="song-artist"></p>
+          <p id="song-meta" class="song-meta"></p>
         </div>
 
-        <div class="control-group">
-          <span class="group-label">Show</span>
+        <section class="panel">
+          <h2>Tracks</h2>
+          <ul id="track-list" class="track-list"></ul>
+          <p class="panel-note">Ticked tracks are shown. Use <svg class="icon inline" aria-hidden="true"><use href="#i-volume" /></svg> and <svg class="icon inline" aria-hidden="true"><use href="#i-headphones" /></svg> to mute or solo during playback.</p>
+        </section>
+
+        <section class="panel">
+          <h2>Notation</h2>
           <div class="segmented" role="radiogroup" aria-label="Notation">
-            <label><input type="radio" name="view" value="both" checked /><span>Notes + Tab</span></label>
+            <label><input type="radio" name="view" value="both" /><span>Notes + Tab</span></label>
             <label><input type="radio" name="view" value="notes" /><span>Notes</span></label>
             <label><input type="radio" name="view" value="tab" /><span>Tab</span></label>
           </div>
-          <label class="check" title="Show rhythm stems under the tab numbers"><input type="checkbox" id="tab-rhythm" checked /> Rhythm on tab</label>
-          <label class="check" title="Rhythm slashes"><input type="checkbox" id="slash" /> Slashes</label>
-        </div>
+          <div class="switches">
+            <label class="switch"><input type="checkbox" id="opt-rhythm" /><span>Rhythm under tab</span></label>
+            <label class="switch"><input type="checkbox" id="opt-slash" /><span>Rhythm slashes</span></label>
+            <label class="switch"><input type="checkbox" id="opt-chords" /><span>Chord names</span></label>
+            <label class="switch"><input type="checkbox" id="opt-sections" /><span>Section names</span></label>
+            <label class="switch"><input type="checkbox" id="opt-tempo" /><span>Tempo marks</span></label>
+          </div>
+        </section>
 
-        <div class="control-group">
-          <span class="group-label">Tracks</span>
-          <div id="track-list" class="chips"></div>
-        </div>
-
-        <div class="control-group">
-          <span class="group-label">Layout</span>
+        <section class="panel">
+          <h2>Layout</h2>
           <div class="segmented" role="radiogroup" aria-label="Layout">
-            <label><input type="radio" name="layout" value="page" checked /><span>Page</span></label>
+            <label><input type="radio" name="layout" value="page" /><span>Pages</span></label>
             <label><input type="radio" name="layout" value="horizontal" /><span>One line</span></label>
           </div>
-          <div class="zoom">
-            <button type="button" class="icon-btn" id="zoom-out" aria-label="Zoom out">&minus;</button>
-            <span id="zoom-level">100%</span>
-            <button type="button" class="icon-btn" id="zoom-in" aria-label="Zoom in">+</button>
-          </div>
-        </div>
-
-        <div class="control-group">
-          <span class="group-label">Listen</span>
-          <button type="button" class="icon-btn play" id="play-btn" aria-label="Play" disabled>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5v14l11-7z" /><path class="i-pause" d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>
-          </button>
-          <button type="button" class="icon-btn" id="stop-btn" aria-label="Stop" disabled>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z" /></svg>
-          </button>
-          <label class="speed">Speed
-            <select id="speed">
-              <option value="0.5">50%</option>
-              <option value="0.75">75%</option>
-              <option value="1" selected>100%</option>
-              <option value="1.25">125%</option>
+          <div class="field">
+            <label for="opt-bars">Bars per line</label>
+            <select id="opt-bars">
+              <option value="-1">Automatic</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
             </select>
-          </label>
-          <label class="check"><input type="checkbox" id="metronome" /> Click</label>
-          <span id="player-status" class="muted small"></span>
-        </div>
-
-        <div class="control-group actions">
-          <button type="button" class="btn primary" id="print-btn">Print / PDF</button>
-          <div class="menu">
-            <button type="button" class="btn ghost" id="export-btn" aria-haspopup="true" aria-expanded="false">Download&nbsp;&#9662;</button>
-            <div class="menu-list" id="export-menu" role="menu" hidden>
-              <button type="button" role="menuitem" data-export="gp">Guitar Pro (.gp)</button>
-              <button type="button" role="menuitem" data-export="midi">MIDI (.mid)</button>
-              <button type="button" role="menuitem" data-export="tex">alphaTex text (.atex)</button>
-              <button type="button" role="menuitem" data-export="json" id="export-json">Songsterr data (.json)</button>
-            </div>
           </div>
+          <div class="field">
+            <label for="opt-zoom">Size <output id="zoom-value" for="opt-zoom">100%</output></label>
+            <input type="range" id="opt-zoom" min="60" max="160" step="10" />
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Print and export</h2>
+          <div class="field">
+            <label for="opt-paper">Paper</label>
+            <select id="opt-paper">
+              <option value="a4">A4</option>
+              <option value="letter">US Letter</option>
+            </select>
+          </div>
+          <button type="button" class="btn primary block" id="print-btn">
+            <svg class="icon" aria-hidden="true"><use href="#i-print" /></svg>Print or save as PDF
+          </button>
+          <ul class="export-list">
+            <li><button type="button" class="btn ghost block" data-export="gp"><svg class="icon" aria-hidden="true"><use href="#i-download" /></svg>Guitar Pro <span class="ext">.gp</span></button></li>
+            <li><button type="button" class="btn ghost block" data-export="midi"><svg class="icon" aria-hidden="true"><use href="#i-download" /></svg>MIDI <span class="ext">.mid</span></button></li>
+            <li><button type="button" class="btn ghost block" data-export="tex"><svg class="icon" aria-hidden="true"><use href="#i-download" /></svg>alphaTex <span class="ext">.atex</span></button></li>
+            <li><button type="button" class="btn ghost block" data-export="json" id="export-json"><svg class="icon" aria-hidden="true"><use href="#i-download" /></svg>Songsterr data <span class="ext">.json</span></button></li>
+            <li><button type="button" class="btn ghost block" id="copy-link"><svg class="icon" aria-hidden="true"><use href="#i-link" /></svg>Copy link to this page</button></li>
+          </ul>
+        </section>
+
+        <p class="shortcuts">
+          <kbd>Space</kbd> play or pause · <kbd>Esc</kbd> stop · <kbd>L</kbd> loop · <kbd>+</kbd> <kbd>−</kbd> size · <kbd>P</kbd> print
+        </p>
+      </aside>
+
+      <div class="stage" id="stage">
+        <div id="warnings" class="warnings" hidden></div>
+        <div id="viewer-status" class="status floating" role="status" aria-live="polite" hidden></div>
+        <div class="paper-frame">
+          <div id="render-progress" class="render-progress" hidden><span></span></div>
+          <div id="score" class="paper"></div>
         </div>
       </div>
 
-      <div id="warnings" class="warnings no-print" hidden></div>
-
-      <div class="paper-wrap">
-        <div id="render-progress" class="render-progress no-print" hidden><span></span></div>
-        <div id="score" class="paper"></div>
+      <div class="transport" role="toolbar" aria-label="Playback">
+        <div class="transport-buttons">
+          <button type="button" class="icon-btn primary" id="play-btn" aria-label="Play" disabled>
+            <svg class="icon i-play" aria-hidden="true"><use href="#i-play" /></svg>
+            <svg class="icon i-pause" aria-hidden="true"><use href="#i-pause" /></svg>
+          </button>
+          <button type="button" class="icon-btn" id="stop-btn" aria-label="Stop" disabled><svg class="icon" aria-hidden="true"><use href="#i-stop" /></svg></button>
+        </div>
+        <div class="timeline">
+          <span id="time-current" class="time">0:00</span>
+          <input type="range" id="seek" min="0" max="1000" value="0" aria-label="Position" disabled />
+          <span id="time-total" class="time">0:00</span>
+        </div>
+        <div class="transport-options">
+          <button type="button" class="icon-btn toggle" id="loop-btn" aria-pressed="false" title="Loop (L). Drag across bars in the score to loop just those."><svg class="icon" aria-hidden="true"><use href="#i-loop" /></svg></button>
+          <button type="button" class="icon-btn toggle" id="countin-btn" aria-pressed="false" title="Count in before playing"><svg class="icon" aria-hidden="true"><use href="#i-countin" /></svg></button>
+          <button type="button" class="icon-btn toggle" id="metronome-btn" aria-pressed="false" title="Metronome (M)"><svg class="icon" aria-hidden="true"><use href="#i-metronome" /></svg></button>
+          <label class="speed" title="Playback speed">
+            <span class="visually-hidden">Speed</span>
+            <input type="range" id="speed" min="25" max="150" step="5" value="100" />
+            <output id="speed-value" for="speed">100%</output>
+          </label>
+        </div>
+        <span id="player-status" class="player-status"></span>
       </div>
     </section>
   </main>
 
-  <footer class="site-footer no-print">
-    <p>Renders with <a href="https://alphatab.net" target="_blank" rel="noopener">alphaTab</a>. Tab data comes from Songsterr when you paste a link; please respect their terms and the songwriters' rights. For personal practice use.</p>
-  </footer>
-
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <div id="drop-overlay" class="drop-overlay" hidden><p>Drop the file to open it</p></div>
 
   <script type="module" src="js/app.js"></script>

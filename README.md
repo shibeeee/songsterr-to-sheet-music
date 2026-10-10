@@ -1,71 +1,75 @@
 # Tab to Sheet
 
-Paste a Songsterr link and get printable sheet music. Choose **standard notation**, **tab (fret numbers)**, or **both** stacked together, then print it, save it as a PDF, or download it in another format.
+Turn any Songsterr tab into printable sheet music: standard notation, tablature, or both. Paste a link or search for a song, pick your tracks, and print it or save it as a PDF.
 
-![Notes + Tab view](docs/screenshot.png)
+**Use it online: <https://shibeeee.github.io/songsterr-to-sheet-music/>**
 
-## Features
+![The score view](docs/screenshot.png)
 
-- **Songsterr links in, sheet music out.** Paste a link like `https://www.songsterr.com/a/wsa/artist-song-tab-s12345`. If the link ends in `t2` (or another track number), that track opens first.
-- **Notes, Tab, or both.** Switch any time. Tab-only view can show rhythm stems under the numbers, and there's an optional slash-rhythm staff.
-- **Pick your tracks.** Show one instrument or stack several (guitar, bass, drums, and so on) in one score.
-- **Print / PDF.** Opens a clean A4 print window; choose "Save as PDF" in the print dialog to get a PDF.
-- **Download** as Guitar Pro (`.gp`), MIDI (`.mid`), alphaTex text (`.atex`), or the raw Songsterr data (`.json`). The JSON can be reopened later without an internet connection.
-- **Listen along** with built-in playback, a speed control and a metronome click. The current note is highlighted as it plays.
-- **Open your own files too:** Guitar Pro 3–7, MusicXML, alphaTex, or saved Songsterr JSON. Use the button or drag the file onto the page.
-- Page or single-line layout, zoom, and a layout that works on phones.
+## What it does
 
-Supported techniques include ties, hammer-ons/pull-offs, slides, bends, vibrato, palm mutes, let ring, dead and ghost notes, harmonics, accents, staccato, grace notes, tuplets, strums, pick strokes, dynamics, chord names, sections, repeats, alternate endings, time signature changes and tempo changes.
+- **Paste a Songsterr link or search by name.** If the link ends in `t2` (or another track number), that track opens first.
+- **Notes + Tab, Notes, or Tab**, plus optional rhythm under the tab, rhythm slashes, chord names, section names and tempo marks.
+- **Choose tracks.** Show one instrument or several stacked in one score; each track shows its tuning.
+- **Print or save as PDF** on A4 or US Letter, always laid out as pages. Choose how many bars go on each line.
+- **Download** as Guitar Pro (`.gp`), MIDI (`.mid`), alphaTex (`.atex`) or the raw Songsterr data (`.json`, which reopens later without an internet connection).
+- **Listen along**: play, pause, seek, loop (drag across bars to loop a section), count-in, metronome, speed from 25% to 150%, and per-track mute and solo.
+- **Open your own files**: Guitar Pro 3 to 7, MusicXML, alphaTex or saved Songsterr data. Drag a file onto the page or use **Open file**.
+- **Remembers** your recent songs and display settings in your browser.
+- Keyboard shortcuts: <kbd>Space</kbd> play or pause, <kbd>Esc</kbd> stop, <kbd>L</kbd> loop, <kbd>M</kbd> metronome, <kbd>+</kbd>/<kbd>-</kbd> size, <kbd>P</kbd> print.
+- Works on phones, and follows your system's light or dark setting.
 
-## Use it online
+Supported techniques include ties, hammer-ons and pull-offs, slides, bends, vibrato, palm mutes, let ring, dead and ghost notes, harmonics, accents, staccato, grace notes, tuplets, strums, pick strokes, dynamics, repeats, alternate endings, and time signature and tempo changes.
 
-**<https://shibeeee.github.io/songsterr-to-sheet-music/>**
+## How the website gets songs
 
-Songsterr doesn't let other websites read its tabs, so the online version gets songs through a bookmark:
+The website is static (GitHub Pages), so your browser does the fetching. It tries these routes in order and remembers the one that worked:
 
-1. On the site, open **"Get any song from Songsterr in one click"** and drag the **Tab to Sheet** button to your bookmarks bar.
-2. Open any song on songsterr.com.
-3. Click the bookmark. The song opens on the site as sheet music, starting on the track you were viewing.
+1. **Directly from Songsterr.**
+2. **A relay of your own**, if the site or you have one configured (see below).
+3. **Public relays** (free CORS relay services, which come and go).
 
-If your browser blocks the pop-up, the bookmark saves the song as a `.json` file instead; open it on the site with **Open a file**. Opening Guitar Pro or MusicXML files and the demo work online with no bookmark needed. Bookmarks are easiest on a computer; on a phone, use a saved `.json` file or run your own copy.
+If none of them answers, the page explains the fallbacks: a **bookmark** you click on the Songsterr page, setting up a relay, or running the app yourself. Most of the time you won't need any of them.
 
-The site is rebuilt and published automatically by GitHub Actions (`.github/workflows/pages.yml`) every time the main branch changes.
+### Optional: a relay of your own
+
+`relay/worker.js` is a small Cloudflare Worker (free plan) that fetches from Songsterr for the site. It only forwards requests to Songsterr's own addresses, so it can't be used as an open proxy. To set it up:
+
+1. In Cloudflare: **Workers & Pages → Create → Create Worker**, paste `relay/worker.js`, and deploy.
+2. In this GitHub repo: **Settings → Secrets and variables → Actions → Variables**, add `RELAY_URL` with the worker's address (for example `https://tab-relay.yourname.workers.dev`).
+3. Re-run the **Deploy website** workflow. The site will use your relay for everyone.
+
+You can also paste a relay address under "If a Songsterr link won't load" on the home page, which only affects your browser.
 
 ## Run it yourself
 
-Running your own copy lets you paste Songsterr links directly, no bookmark needed. You need [Node.js](https://nodejs.org) 18.17 or newer.
+With your own copy, links always work, because the small server fetches from Songsterr on your behalf. You need [Node.js](https://nodejs.org) 18.17 or newer.
 
 ```bash
 npm install
 npm start
 ```
 
-Then open <http://localhost:3000>. Click **Try the demo** to see an example without a Songsterr link.
+Open <http://localhost:3000>. Set `PORT` to use another port, or `HOST=0.0.0.0` to reach it from other devices on your network.
 
-Set `PORT` to use a different port. Set `HOST=0.0.0.0` to open it to other devices on your network.
+## Project layout
 
-## How it works
+| Path | What it is |
+| --- | --- |
+| `public/index.html`, `public/css/styles.css` | The page. |
+| `public/js/app.js` | The interface: loading, options, tracks, player, print, export. |
+| `public/js/convert.js` | Turns Songsterr's JSON into an [alphaTab](https://alphatab.net) score. |
+| `public/js/songsterr.js` | Talks to Songsterr: link parsing, search, song and track download. Shared by the browser and the server. |
+| `public/js/sources.js` | How the browser reaches Songsterr (server, direct, relays). |
+| `public/js/bookmarklet.js` | The fallback bookmark. |
+| `public/js/storage.js` | Recent songs and saved settings. |
+| `server.js` | Optional local server (`npm start`). |
+| `relay/worker.js` | Optional relay for the hosted site. |
+| `scripts/build-static.js` | Builds the static site into `dist/` (`npm run build`). |
+| `.github/workflows/pages.yml` | Tests, builds and publishes the site on every push. |
+| `public/demo/demo-song.json` | An original practice exercise used for the example and the tests. |
 
-```
-Browser                         server.js                      Songsterr
-───────                         ─────────                      ─────────
-paste link ──► /api/songsterr ──► read song id from the link
-                                  find the latest revision ──► tab page / metadata API
-                                  download every track     ──► CDN track JSON
-           ◄── JSON bundle    ◄──
-convert.js: Songsterr JSON ► alphaTab score
-alphaTab: draws notation + tab, plays audio, prints, exports
-```
-
-- `server.js` is a small dependency-free Node server. It's needed because browsers can't fetch from Songsterr directly (cross-origin rules). Results are cached in memory for an hour.
-- `lib/songsterr.js` finds the song's current revision and downloads each track's JSON. If one method fails it tries the next, including a mirror CDN.
-- `public/js/convert.js` turns Songsterr's JSON into an [alphaTab](https://alphatab.net) score: notes, strings, tuning, durations, tuplets, techniques and song structure.
-- `public/js/app.js` is the page: view options, track picker, player, print and downloads.
-- `public/js/bookmarklet.js` is the bookmark used by the online version. It runs on the Songsterr page, downloads the song's tracks there, and sends them to the site.
-- `scripts/build-static.js` (`npm run build`) builds the static site into `dist/` for GitHub Pages or any other static host.
-- `public/demo/demo-song.json` is an original practice exercise used by the demo button and the tests.
-
-Songsterr has no official public API for tab data, so if they change their site the fetch step may need updating. Files you open yourself (Guitar Pro, MusicXML, saved JSON) don't depend on Songsterr at all.
+Songsterr has no official public API for tab data, so if they change their site the fetching code may need updating. Files you open yourself don't depend on Songsterr at all.
 
 ## Tests
 
@@ -73,10 +77,8 @@ Songsterr has no official public API for tab data, so if they change their site 
 npm test
 ```
 
-The tests cover the converter (bar lengths, string and pitch mapping, techniques, structure, exports) and the Songsterr fetching logic, using a fake network.
-
 ## Notes
 
-This is meant for personal practice. Tab data belongs to Songsterr and its contributors, and songs belong to their writers, so please respect Songsterr's terms of service and don't redistribute what you download.
+For personal practice. Tabs belong to Songsterr and its contributors, and songs to their writers, so please respect Songsterr's terms and don't redistribute what you download.
 
-Rendering, playback and file export are provided by [alphaTab](https://github.com/CoderLine/alphaTab) (MPL-2.0), which ships with the Bravura music font and the Sonivox sound font.
+Notation, playback and file export come from [alphaTab](https://github.com/CoderLine/alphaTab) (MPL-2.0), which ships with the Bravura music font and the Sonivox sound font.
