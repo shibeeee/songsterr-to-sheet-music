@@ -1,0 +1,2360 @@
+{
+ "title": "Demo Exercise in C",
+ "artist": "Songsterr to Sheet Music",
+ "songId": 0,
+ "revisionId": 0,
+ "tracks": [
+  {
+   "meta": {
+    "partId": 0,
+    "instrumentId": 25,
+    "title": "Acoustic Guitar",
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40
+    ]
+   },
+   "data": {
+    "name": "Acoustic Guitar",
+    "instrumentId": 25,
+    "strings": 6,
+    "frets": 24,
+    "tuning": [
+     64,
+     59,
+     55,
+     50,
+     45,
+     40
+    ],
+    "automations": {
+     "tempo": [
+      {
+       "measure": 0,
+       "position": 0,
+       "bpm": 96,
+       "type": 4
+      },
+      {
+       "measure": 4,
+       "position": 0,
+       "bpm": 100,
+       "type": 4
+      }
+     ]
+    },
+    "measures": [
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 4,
+            "fret": 3
+           }
+          ],
+          "chord": {
+           "text": "C"
+          },
+          "pickStroke": "down"
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 2
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 0
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 1,
+            "fret": 1
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 0,
+            "fret": 0
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 1,
+            "fret": 1
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 0
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 2
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "rest": true,
+        "beats": [
+         {
+          "type": 1,
+          "duration": [
+           1,
+           1
+          ],
+          "rest": true,
+          "notes": [
+           {
+            "rest": true
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "signature": [
+       4,
+       4
+      ],
+      "marker": {
+       "text": "Intro",
+       "width": 60
+      },
+      "repeatStart": true
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 4,
+            "fret": 0
+           }
+          ],
+          "chord": {
+           "text": "Am"
+          }
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 2
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 2
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 1,
+            "fret": 1
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 0,
+            "fret": 0
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 1,
+            "fret": 1
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 2
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 2
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "rest": true,
+        "beats": [
+         {
+          "type": 1,
+          "duration": [
+           1,
+           1
+          ],
+          "rest": true,
+          "notes": [
+           {
+            "rest": true
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 5,
+            "fret": 1
+           }
+          ],
+          "chord": {
+           "text": "F"
+          }
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 4,
+            "fret": 3
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 3
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 2
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 1,
+            "fret": 1
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 0,
+            "fret": 1
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 1,
+            "fret": 1
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 2
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "rest": true,
+        "beats": [
+         {
+          "type": 1,
+          "duration": [
+           1,
+           1
+          ],
+          "rest": true,
+          "notes": [
+           {
+            "rest": true
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 5,
+            "fret": 3
+           }
+          ],
+          "chord": {
+           "text": "G"
+          }
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 4,
+            "fret": 2
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 0
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 0
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 1,
+            "fret": 0
+           },
+           {
+            "string": 0,
+            "fret": 3
+           }
+          ],
+          "letRing": true
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 5,
+            "fret": 3
+           },
+           {
+            "string": 4,
+            "fret": 2
+           },
+           {
+            "string": 3,
+            "fret": 0
+           },
+           {
+            "string": 2,
+            "fret": 0
+           },
+           {
+            "string": 1,
+            "fret": 0
+           },
+           {
+            "string": 0,
+            "fret": 3
+           }
+          ],
+          "brushStroke": {
+           "direction": "down",
+           "duration": 30
+          }
+         }
+        ]
+       },
+       {
+        "rest": true,
+        "beats": [
+         {
+          "type": 1,
+          "duration": [
+           1,
+           1
+          ],
+          "rest": true,
+          "notes": [
+           {
+            "rest": true
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "repeat": 2
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 8,
+          "duration": [
+           1,
+           12
+          ],
+          "notes": [
+           {
+            "string": 4,
+            "fret": 3
+           }
+          ],
+          "tuplet": 3,
+          "tupletStart": true
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           12
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 0
+           }
+          ],
+          "tuplet": 3
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           12
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 2
+           }
+          ],
+          "tuplet": 3,
+          "tupletStop": true
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           12
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 3
+           }
+          ],
+          "tuplet": 3,
+          "tupletStart": true
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           12
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 0
+           }
+          ],
+          "tuplet": 3
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           12
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 2
+           }
+          ],
+          "tuplet": 3,
+          "tupletStop": true
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 4,
+            "hp": true
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 5
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "rest": true,
+        "beats": [
+         {
+          "type": 1,
+          "duration": [
+           1,
+           1
+          ],
+          "rest": true,
+          "notes": [
+           {
+            "rest": true
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "marker": {
+       "text": "Run",
+       "width": 40
+      }
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 16,
+          "duration": [
+           1,
+           16
+          ],
+          "notes": [
+           {
+            "string": 1,
+            "fret": 5
+           }
+          ],
+          "palmMute": true
+         },
+         {
+          "type": 16,
+          "duration": [
+           1,
+           16
+          ],
+          "notes": [
+           {
+            "string": 1,
+            "fret": 5
+           }
+          ],
+          "palmMute": true
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": 1,
+            "fret": 7,
+            "slide": "shift"
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 1,
+            "fret": 8
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 7,
+            "bend": {
+             "tone": 100,
+             "points": [
+              {
+               "position": 0,
+               "tone": 0
+              },
+              {
+               "position": 15,
+               "tone": 100
+              },
+              {
+               "position": 60,
+               "tone": 100
+              }
+             ]
+            }
+           }
+          ],
+          "velocity": "f"
+         },
+         {
+          "type": 8,
+          "duration": [
+           3,
+           16
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 5
+           }
+          ],
+          "dots": 1
+         },
+         {
+          "type": 16,
+          "duration": [
+           1,
+           16
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 5,
+            "hp": true
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "rest": true,
+        "beats": [
+         {
+          "type": 1,
+          "duration": [
+           1,
+           1
+          ],
+          "rest": true,
+          "notes": [
+           {
+            "rest": true
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 2,
+          "duration": [
+           3,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 7,
+            "vibrato": true
+           }
+          ],
+          "dots": 1
+         }
+        ]
+       },
+       {
+        "rest": true,
+        "beats": [
+         {
+          "type": 1,
+          "duration": [
+           1,
+           1
+          ],
+          "rest": true,
+          "notes": [
+           {
+            "rest": true
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "signature": [
+       3,
+       4
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 1,
+          "duration": [
+           1,
+           1
+          ],
+          "notes": [
+           {
+            "string": 5,
+            "fret": 0
+           },
+           {
+            "string": 4,
+            "fret": 3
+           },
+           {
+            "string": 3,
+            "fret": 2
+           },
+           {
+            "string": 2,
+            "fret": 0
+           },
+           {
+            "string": 1,
+            "fret": 1
+           },
+           {
+            "string": 0,
+            "fret": 0
+           }
+          ],
+          "chord": {
+           "text": "C"
+          },
+          "letRing": true
+         }
+        ]
+       },
+       {
+        "rest": true,
+        "beats": [
+         {
+          "type": 1,
+          "duration": [
+           1,
+           1
+          ],
+          "rest": true,
+          "notes": [
+           {
+            "rest": true
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "signature": [
+       4,
+       4
+      ],
+      "marker": {
+       "text": "Outro",
+       "width": 50
+      }
+     }
+    ]
+   }
+  },
+  {
+   "meta": {
+    "partId": 1,
+    "instrumentId": 33,
+    "title": "Bass",
+    "tuning": [
+     43,
+     38,
+     33,
+     28
+    ]
+   },
+   "data": {
+    "name": "Bass",
+    "instrumentId": 33,
+    "strings": 4,
+    "frets": 24,
+    "tuning": [
+     43,
+     38,
+     33,
+     28
+    ],
+    "automations": {
+     "tempo": [
+      {
+       "measure": 0,
+       "position": 0,
+       "bpm": 96,
+       "type": 4
+      },
+      {
+       "measure": 4,
+       "position": 0,
+       "bpm": 100,
+       "type": 4
+      }
+     ]
+    },
+    "measures": [
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 3
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 3
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 3
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 5
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "signature": [
+       4,
+       4
+      ],
+      "repeatStart": true
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 0
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 0
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 0
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 2
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 1
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 1
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 1
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 3
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 3
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 3
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 3
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 5
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "repeat": 2
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 1,
+          "duration": [
+           1,
+           1
+          ],
+          "rest": true,
+          "notes": [
+           {
+            "rest": true
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 2
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 2
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 2
+           }
+          ]
+         },
+         {
+          "type": 4,
+          "duration": [
+           1,
+           4
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 4
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 2,
+          "duration": [
+           3,
+           4
+          ],
+          "notes": [
+           {
+            "string": 3,
+            "fret": 0
+           }
+          ],
+          "dots": 1
+         }
+        ]
+       }
+      ],
+      "signature": [
+       3,
+       4
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 1,
+          "duration": [
+           1,
+           1
+          ],
+          "notes": [
+           {
+            "string": 2,
+            "fret": 3
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "signature": [
+       4,
+       4
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "meta": {
+    "partId": 2,
+    "instrumentId": 1024,
+    "title": "Drums",
+    "isDrums": true
+   },
+   "data": {
+    "name": "Drums",
+    "instrumentId": 1024,
+    "strings": 6,
+    "frets": 24,
+    "automations": {
+     "tempo": [
+      {
+       "measure": 0,
+       "position": 0,
+       "bpm": 96,
+       "type": 4
+      },
+      {
+       "measure": 4,
+       "position": 0,
+       "bpm": 100,
+       "type": 4
+      }
+     ]
+    },
+    "measures": [
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 1.5,
+            "fret": 38
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 1.5,
+            "fret": 38
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "signature": [
+       4,
+       4
+      ],
+      "repeatStart": true
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 1.5,
+            "fret": 38
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 1.5,
+            "fret": 38
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 1.5,
+            "fret": 38
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 1.5,
+            "fret": 38
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 1.5,
+            "fret": 38
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 1.5,
+            "fret": 38
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "repeat": 2
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 1.5,
+            "fret": 38
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 1.5,
+            "fret": 38
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 1.5,
+            "fret": 38
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 1.5,
+            "fret": 38
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 1.5,
+            "fret": 38
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         },
+         {
+          "type": 8,
+          "duration": [
+           1,
+           8
+          ],
+          "notes": [
+           {
+            "string": -0.5,
+            "fret": 42
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "signature": [
+       3,
+       4
+      ]
+     },
+     {
+      "voices": [
+       {
+        "beats": [
+         {
+          "type": 1,
+          "duration": [
+           1,
+           1
+          ],
+          "notes": [
+           {
+            "string": -1,
+            "fret": 49
+           },
+           {
+            "string": 3.5,
+            "fret": 36
+           }
+          ]
+         }
+        ]
+       }
+      ],
+      "signature": [
+       4,
+       4
+      ]
+     }
+    ]
+   }
+  }
+ ]
+}

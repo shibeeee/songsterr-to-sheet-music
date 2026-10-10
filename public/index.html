@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tab to Sheet</title>
+  <meta name="description" content="Turn Songsterr tabs into printable sheet music: standard notation, tablature, or both." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23233a5e'/%3E%3Cpath d='M20 6v14.5a4 4 0 1 1-2-3.46V10l-6 1.5v11a4 4 0 1 1-2-3.46V8z' fill='%23fff'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <header class="site-header no-print">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" /><path d="M20 6v14.5a4 4 0 1 1-2-3.46V10l-6 1.5v11a4 4 0 1 1-2-3.46V8z" /></svg>
+      <div>
+        <h1>Tab to Sheet</h1>
+        <p class="tagline">Songsterr links to printable sheet music</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="loader no-print" aria-label="Load a song">
+      <form id="url-form" class="url-form" autocomplete="off">
+        <label for="url-input" class="visually-hidden">Songsterr link</label>
+        <input id="url-input" name="url" type="text" inputmode="url" spellcheck="false"
+               placeholder="Paste a Songsterr link, e.g. https://www.songsterr.com/a/wsa/artist-song-tab-s12345" />
+        <button type="submit" class="btn primary" id="convert-btn">Convert</button>
+      </form>
+      <div class="loader-alt">
+        <span>or</span>
+        <label class="btn ghost file-btn">
+          Open a file
+          <input id="file-input" type="file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml,.mxl,.json,.atex,.alphatex,.txt" />
+        </label>
+        <button type="button" class="btn ghost" id="demo-btn">Try the demo</button>
+        <span class="hint">Guitar Pro, MusicXML, alphaTex, or a saved Songsterr JSON. You can also drop a file anywhere.</span>
+      </div>
+      <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+    </section>
+
+    <section id="workspace" class="workspace" hidden>
+      <div class="toolbar no-print" role="toolbar" aria-label="Score options">
+        <div class="song-info">
+          <h2 id="song-title"></h2>
+          <p id="song-artist"></p>
+        </div>
+
+        <div class="control-group">
+          <span class="group-label">Show</span>
+          <div class="segmented" role="radiogroup" aria-label="Notation">
+            <label><input type="radio" name="view" value="both" checked /><span>Notes + Tab</span></label>
+            <label><input type="radio" name="view" value="notes" /><span>Notes</span></label>
+            <label><input type="radio" name="view" value="tab" /><span>Tab</span></label>
+          </div>
+          <label class="check" title="Show rhythm stems under the tab numbers"><input type="checkbox" id="tab-rhythm" checked /> Rhythm on tab</label>
+          <label class="check" title="Rhythm slashes"><input type="checkbox" id="slash" /> Slashes</label>
+        </div>
+
+        <div class="control-group">
+          <span class="group-label">Tracks</span>
+          <div id="track-list" class="chips"></div>
+        </div>
+
+        <div class="control-group">
+          <span class="group-label">Layout</span>
+          <div class="segmented" role="radiogroup" aria-label="Layout">
+            <label><input type="radio" name="layout" value="page" checked /><span>Page</span></label>
+            <label><input type="radio" name="layout" value="horizontal" /><span>One line</span></label>
+          </div>
+          <div class="zoom">
+            <button type="button" class="icon-btn" id="zoom-out" aria-label="Zoom out">&minus;</button>
+            <span id="zoom-level">100%</span>
+            <button type="button" class="icon-btn" id="zoom-in" aria-label="Zoom in">+</button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <span class="group-label">Listen</span>
+          <button type="button" class="icon-btn play" id="play-btn" aria-label="Play" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5v14l11-7z" /><path class="i-pause" d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>
+          </button>
+          <button type="button" class="icon-btn" id="stop-btn" aria-label="Stop" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10H7z" /></svg>
+          </button>
+          <label class="speed">Speed
+            <select id="speed">
+              <option value="0.5">50%</option>
+              <option value="0.75">75%</option>
+              <option value="1" selected>100%</option>
+              <option value="1.25">125%</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="metronome" /> Click</label>
+          <span id="player-status" class="muted small"></span>
+        </div>
+
+        <div class="control-group actions">
+          <button type="button" class="btn primary" id="print-btn">Print / PDF</button>
+          <div class="menu">
+            <button type="button" class="btn ghost" id="export-btn" aria-haspopup="true" aria-expanded="false">Download&nbsp;&#9662;</button>
+            <div class="menu-list" id="export-menu" role="menu" hidden>
+              <button type="button" role="menuitem" data-export="gp">Guitar Pro (.gp)</button>
+              <button type="button" role="menuitem" data-export="midi">MIDI (.mid)</button>
+              <button type="button" role="menuitem" data-export="tex">alphaTex text (.atex)</button>
+              <button type="button" role="menuitem" data-export="json" id="export-json">Songsterr data (.json)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="warnings" class="warnings no-print" hidden></div>
+
+      <div class="paper-wrap">
+        <div id="render-progress" class="render-progress no-print" hidden><span></span></div>
+        <div id="score" class="paper"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer no-print">
+    <p>Renders with <a href="https://alphatab.net" target="_blank" rel="noopener">alphaTab</a>. Tab data comes from Songsterr when you paste a link; please respect their terms and the songwriters' rights. For personal practice use.</p>
+  </footer>
+
+  <div id="drop-overlay" class="drop-overlay" hidden><p>Drop the file to open it</p></div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
