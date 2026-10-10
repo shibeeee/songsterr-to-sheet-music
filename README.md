@@ -17,9 +17,23 @@ Paste a Songsterr link and get printable sheet music. Choose **standard notation
 
 Supported techniques include ties, hammer-ons/pull-offs, slides, bends, vibrato, palm mutes, let ring, dead and ghost notes, harmonics, accents, staccato, grace notes, tuplets, strums, pick strokes, dynamics, chord names, sections, repeats, alternate endings, time signature changes and tempo changes.
 
-## Run it
+## Use it online
 
-You need [Node.js](https://nodejs.org) 18.17 or newer.
+**<https://shibeeee.github.io/songsterr-to-sheet-music/>**
+
+Songsterr doesn't let other websites read its tabs, so the online version gets songs through a bookmark:
+
+1. On the site, open **"Get any song from Songsterr in one click"** and drag the **Tab to Sheet** button to your bookmarks bar.
+2. Open any song on songsterr.com.
+3. Click the bookmark. The song opens on the site as sheet music, starting on the track you were viewing.
+
+If your browser blocks the pop-up, the bookmark saves the song as a `.json` file instead; open it on the site with **Open a file**. Opening Guitar Pro or MusicXML files and the demo work online with no bookmark needed. Bookmarks are easiest on a computer; on a phone, use a saved `.json` file or run your own copy.
+
+The site is rebuilt and published automatically by GitHub Actions (`.github/workflows/pages.yml`) every time the main branch changes.
+
+## Run it yourself
+
+Running your own copy lets you paste Songsterr links directly, no bookmark needed. You need [Node.js](https://nodejs.org) 18.17 or newer.
 
 ```bash
 npm install
@@ -47,6 +61,8 @@ alphaTab: draws notation + tab, plays audio, prints, exports
 - `lib/songsterr.js` finds the song's current revision and downloads each track's JSON. If one method fails it tries the next, including a mirror CDN.
 - `public/js/convert.js` turns Songsterr's JSON into an [alphaTab](https://alphatab.net) score: notes, strings, tuning, durations, tuplets, techniques and song structure.
 - `public/js/app.js` is the page: view options, track picker, player, print and downloads.
+- `public/js/bookmarklet.js` is the bookmark used by the online version. It runs on the Songsterr page, downloads the song's tracks there, and sends them to the site.
+- `scripts/build-static.js` (`npm run build`) builds the static site into `dist/` for GitHub Pages or any other static host.
 - `public/demo/demo-song.json` is an original practice exercise used by the demo button and the tests.
 
 Songsterr has no official public API for tab data, so if they change their site the fetch step may need updating. Files you open yourself (Guitar Pro, MusicXML, saved JSON) don't depend on Songsterr at all.

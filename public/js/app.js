@@ -1,5 +1,10 @@
-import * as alphaTab from '/vendor/alphatab/alphaTab.mjs';
+import * as alphaTab from '../vendor/alphatab/alphaTab.mjs';
 import { songsterrToScore } from './convert.js';
+import { setupBookmarklet, listenForBookmarklet } from './bookmarklet.js';
+
+// Everything is resolved relative to the page so the app also works from a
+// sub-path, e.g. https://user.github.io/songsterr-to-sheet-music/
+const asset = (path) => new URL(path, document.baseURI).href;
 
 const $ = (id) => document.getElementById(id);
 
@@ -13,12 +18,12 @@ const state = {
 const ZOOM_STEPS = [0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.4, 1.6];
 
 const api = new alphaTab.AlphaTabApi($('score'), {
-  core: { fontDirectory: '/vendor/alphatab/font/' },
+  core: { fontDirectory: asset('vendor/alphatab/font/') },
   display: { layoutMode: alphaTab.LayoutMode.Page, scale: 1 },
   notation: { rhythmMode: alphaTab.TabRhythmMode.ShowWithBars },
   player: {
     playerMode: alphaTab.PlayerMode.EnabledSynthesizer,
-    soundFont: '/vendor/alphatab/soundfont/sonivox.sf2',
+    soundFont: asset('vendor/alphatab/soundfont/sonivox.sf2'),
     enableCursor: true,
     enableUserInteraction: true
   }
@@ -77,24 +82,38 @@ function showWarnings(warnings) {
 // Loading
 // ---------------------------------------------------------------------------
 
+// Returns the song from our own server (npm start), or null when the page is
+// served statically (e.g. GitHub Pages) and there is no server to ask.
+async function fetchViaServer(link) {
+  let res;
+  try {
+    res = await fetch(asset(`api/songsterr?url=${encodeURIComponent(link)}`));
+  } catch {
+    return null;
+  }
+  if (!(res.headers.get('content-type') || '').includes('application/json')) return null;
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+  return body;
+}
+
 async function loadFromSongsterr(link) {
   const button = $('convert-btn');
   button.disabled = true;
   setStatus('Fetching the tab from Songsterr...', 'loading');
   try {
-    const res = await fetch(`/api/songsterr?url=${encodeURIComponent(link)}`);
-    const isJson = (res.headers.get('content-type') || '').includes('application/json');
-    if (!isJson) {
-      throw new Error(
-        'The converter server is not running, so Songsterr links cannot be fetched here. Start it with "npm start", or open a file instead.'
-      );
+    const song = await fetchViaServer(link);
+    if (!song) {
+      // Static hosting (GitHub Pages): browsers can't read Songsterr from
+      // another site, so the bookmarklet has to do the fetching.
+      if (!/songsterr\.com\/.*-s\d+/i.test(link)) {
+        throw new Error('That does not look like a Songsterr tab link. It should end in something like "-s12345".');
+      }
+      showBookmarkHelp(link);
+      return;
     }
-    const body = await res.json();
-    if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
 
-    const trackMatch = link.match(/-s\d+t(\d+)/);
-    showBundle(body, trackMatch ? Number(trackMatch[1]) : 0);
-
+    showBundle(song, preferredTrackFrom(link));
     const url = new URL(window.location.href);
     url.searchParams.set('url', link);
     history.replaceState(null, '', url);
@@ -103,6 +122,24 @@ async function loadFromSongsterr(link) {
   } finally {
     button.disabled = false;
   }
+}
+
+function preferredTrackFrom(link) {
+  const match = String(link || '').match(/-s\d+t(\d+)/);
+  return match ? Number(match[1]) : 0;
+}
+
+function showBookmarkHelp(link) {
+  setStatus(
+    "Songsterr doesn't let other websites read its tabs directly. Use the Tab to Sheet bookmark below: open the song on Songsterr, then click the bookmark.",
+    'error'
+  );
+  const help = $('bookmark-help');
+  help.open = true;
+  const open = $('open-on-songsterr');
+  open.href = link;
+  open.hidden = false;
+  help.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function showBundle(bundle, preferredTrack = 0) {
@@ -141,7 +178,7 @@ async function loadFile(file) {
 async function loadDemo() {
   setStatus('Loading the demo...', 'loading');
   try {
-    const res = await fetch('/demo/demo-song.json');
+    const res = await fetch(asset('demo/demo-song.json'));
     showBundle(await res.json());
   } catch (err) {
     setStatus(`Could not load the demo: ${err.message}`, 'error');
@@ -454,6 +491,16 @@ window.addEventListener('drop', (e) => {
   $('drop-overlay').hidden = true;
   const file = e.dataTransfer?.files?.[0];
   if (file) loadFile(file);
+});
+
+setupBookmarklet($('bookmarklet'), asset('./'));
+listenForBookmarklet({
+  onWaiting: () => setStatus('Waiting for the song from Songsterr...', 'loading'),
+  onBundle: (bundle) => {
+    $('url-input').value = bundle.source || '';
+    showBundle(bundle, preferredTrackFrom(bundle.source));
+  },
+  onError: (message) => setStatus(message, 'error')
 });
 
 // Shareable links: ?url=<songsterr link> loads straight away, ?demo opens the demo.

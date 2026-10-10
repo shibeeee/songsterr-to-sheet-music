@@ -6,7 +6,7 @@
   <title>Tab to Sheet</title>
   <meta name="description" content="Turn Songsterr tabs into printable sheet music: standard notation, tablature, or both." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23233a5e'/%3E%3Cpath d='M20 6v14.5a4 4 0 1 1-2-3.46V10l-6 1.5v11a4 4 0 1 1-2-3.46V8z' fill='%23fff'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
   <header class="site-header no-print">
@@ -37,6 +37,20 @@
         <span class="hint">Guitar Pro, MusicXML, alphaTex, or a saved Songsterr JSON. You can also drop a file anywhere.</span>
       </div>
       <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+
+      <details id="bookmark-help" class="bookmark-help">
+        <summary>Get any song from Songsterr in one click</summary>
+        <div class="bookmark-body">
+          <ol>
+            <li>Drag this button to your bookmarks bar:
+              <a id="bookmarklet" class="bookmarklet" href="#" title="Drag me to your bookmarks bar">&#9835; Tab to Sheet</a>
+            </li>
+            <li>Open any song on <a href="https://www.songsterr.com" target="_blank" rel="noopener">songsterr.com</a><a id="open-on-songsterr" target="_blank" rel="noopener" hidden> (open this one)</a>.</li>
+            <li>Click the bookmark. The song opens here as sheet music.</li>
+          </ol>
+          <p class="hint">No bookmarks bar? Press Ctrl+Shift+B (Cmd+Shift+B on a Mac) to show it. If your browser blocks the pop-up, the bookmark saves the song as a .json file instead; open it here with "Open a file".</p>
+        </div>
+      </details>
     </section>
 
     <section id="workspace" class="workspace" hidden>
@@ -124,6 +138,6 @@
 
   <div id="drop-overlay" class="drop-overlay" hidden><p>Drop the file to open it</p></div>
 
-  <script type="module" src="/js/app.js"></script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

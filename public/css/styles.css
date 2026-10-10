@@ -83,6 +83,14 @@ a { color: var(--accent); }
 .loader-alt { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; color: var(--muted); }
 .hint { font-size: 0.85rem; }
 
+.bookmark-help { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.bookmark-help summary { cursor: pointer; font-weight: 600; }
+.bookmark-body ol { margin: 10px 0 6px; padding-left: 22px; display: grid; gap: 8px; }
+.bookmarklet {
+  display: inline-block; margin-left: 6px; padding: 5px 12px; border-radius: 999px;
+  background: var(--accent); color: var(--accent-ink); font-weight: 700; text-decoration: none; cursor: grab;
+}
+
 /* Buttons ----------------------------------------------------------------- */
 .btn {
   font: inherit; font-weight: 600; font-size: 0.95rem;
