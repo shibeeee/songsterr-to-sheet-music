@@ -138,3 +138,21 @@ test('works on the demo guitar with chords, ties and techniques', () => {
   // Drums are left alone.
   assert.deepEqual(optimizeFingering(m, score, 2), { changed: 0, notes: 0 });
 });
+
+test('recognises basses by tuning, instrument sound or name, and explains when it cannot convert', async () => {
+  const { fourStringBlocker, looksLikeBass } = await import('../public/js/fingering.js');
+  // A 6-string bass whose data uses an unusually high tuning but a bass sound.
+  const odd = songsterrToScore(alphaTab, {
+    title: 't',
+    tracks: [
+      { meta: { instrumentId: 25, title: 'Guitar' }, data: { tuning: GUITAR, measures: [{ voices: [{ beats: [] }] }] } },
+      { meta: { instrumentId: 34, title: 'Six' }, data: { instrumentId: 34, tuning: [60, 55, 50, 45, 40, 35].map((x) => x + 5), measures: [{ voices: [{ beats: [] }] }] } }
+    ]
+  }).score;
+  assert.equal(looksLikeBass(odd.tracks[1].staves[0]), true);
+  assert.equal(canConvertToFourString(odd.tracks[1].staves[0]), true);
+  assert.equal(fourStringBlocker(odd.tracks[1]), null);
+  assert.match(fourStringBlocker(odd.tracks[0]), /guitar part/);
+  const four = scoreFrom(BASS_4_STANDARD, [[[[0, 0]]]]);
+  assert.match(fourStringBlocker(four.tracks[0]), /already has 4 strings/);
+});

@@ -6,7 +6,7 @@ import { prefs, recentSongs, rememberSong, forgetSong } from './storage.js';
 import { setupBookmarklet, listenForBookmarklet } from './bookmarklet.js';
 import { snapshot, restore, rebuildScore } from './editor.js';
 import { createEditUI } from './edit-ui.js';
-import { optimizeFingering, convertToFourStringBass, canConvertToFourString } from './fingering.js';
+import { optimizeFingering, convertToFourStringBass, canConvertToFourString, fourStringBlocker } from './fingering.js';
 
 const $ = (id) => document.getElementById(id);
 // Resolve against the page so the app also works from a sub-path
@@ -48,7 +48,8 @@ const state = {
   undo: [],
   redo: [],
   original: null, // snapshot taken when the song was opened
-  dirty: false
+  dirty: false,
+  toolTrack: null // track picked in the Fingering panel (null = choose automatically)
 };
 const UNDO_LIMIT = 60;
 
@@ -309,6 +310,7 @@ function showScore(score, warnings, preferredTrack = 0) {
   state.redo = [];
   state.dirty = false;
   state.original = snapshot(alphaTab, score);
+  state.toolTrack = null;
   state.range = { from: 1, to: 0 };
   state.visible = [score.tracks[preferredTrack] ? preferredTrack : 0];
   state.muted.clear();
@@ -397,6 +399,20 @@ function buildTrackList() {
       Object.assign(document.createElement('span'), { className: 'sub', textContent: describeTrack(track) })
     );
     label.append(box, names);
+    if (track.staves.some(canConvertToFourString)) {
+      const convert = Object.assign(document.createElement('button'), {
+        type: 'button',
+        className: 'linklike track-action',
+        textContent: 'Make 4-string'
+      });
+      convert.title = 'Convert this bass to standard 4-string (E A D G)';
+      convert.addEventListener('click', (e) => {
+        e.preventDefault(); // don't toggle the checkbox around it
+        e.stopPropagation();
+        runConvert(index);
+      });
+      names.append(convert);
+    }
 
     const mute = trackToggle(state.muted.has(index) ? 'i-muted' : 'i-volume', 'Mute', state.muted.has(index), () => {
       const on = !state.muted.has(index);
@@ -547,11 +563,15 @@ function syncTools() {
   $('fingering-panel').hidden = tracks.length === 0;
   if (!tracks.length) return;
   const select = $('tool-track');
-  const previous = Number(select.value);
   select.replaceChildren(
     ...tracks.map((t) => Object.assign(document.createElement('option'), { value: String(t.index), textContent: t.name }))
   );
-  const preferred = tracks.find((t) => t.index === previous) || tracks.find((t) => state.visible.includes(t.index)) || tracks[0];
+  // The user's pick, else a bass that can be converted, else a shown track.
+  const preferred =
+    tracks.find((t) => t.index === state.toolTrack) ||
+    tracks.find((t) => t.staves.some(canConvertToFourString)) ||
+    tracks.find((t) => state.visible.includes(t.index)) ||
+    tracks[0];
   select.value = String(preferred.index);
   updateToolButtons();
 }
@@ -559,12 +579,17 @@ function syncTools() {
 function updateToolButtons() {
   const track = state.score.tracks[Number($('tool-track').value)];
   if (!track) return;
-  $('tool-convert').hidden = !track.staves.some(canConvertToFourString);
+  const blocker = fourStringBlocker(track);
+  const hasStrings = track.staves.some((s) => !s.isPercussion && s.tuning.length > 0);
+  $('tool-convert').hidden = !hasStrings;
+  $('tool-convert').disabled = !!blocker;
+  $('tool-convert').title = blocker || 'Convert this bass to standard 4-string (E A D G)';
   const last = state.score.masterBars.length;
   const to = state.range.to || last;
   const scope = state.range.from === 1 && to === last ? 'every bar' : `bars ${state.range.from} to ${to} (the bars shown)`;
   $('tool-note').textContent =
-    `Keeps every note's pitch and moves notes to the positions that need the least hand movement. Works on ${scope}.`;
+    `Optimizing keeps every note's pitch and moves notes to the positions that need the least hand movement. Works on ${scope}.` +
+    (blocker && track.staves.some((s) => s.tuning.length > 0) ? ` ${blocker}` : '');
 }
 
 function toolRange() {
@@ -585,8 +610,7 @@ function runOptimize() {
   ensureVisible(index);
 }
 
-function runConvert() {
-  const index = Number($('tool-track').value);
+function runConvert(index = Number($('tool-track').value)) {
   let report = null;
   commitEdit((score, m) => {
     report = convertToFourStringBass(m, score, index);
@@ -973,7 +997,10 @@ $('opt-zoom').addEventListener('input', (e) => ($('zoom-value').textContent = `$
 $('opt-zoom').addEventListener('change', (e) => setOption('zoom', Number(e.target.value), 'layout'));
 $('opt-paper').addEventListener('change', (e) => setOption('paper', e.target.value, 'none'));
 
-$('tool-track').addEventListener('change', updateToolButtons);
+$('tool-track').addEventListener('change', (e) => {
+  state.toolTrack = Number(e.target.value);
+  updateToolButtons();
+});
 $('tool-optimize').addEventListener('click', runOptimize);
 $('tool-convert').addEventListener('click', runConvert);
 $('range-from').addEventListener('change', (e) => setRange(Number(e.target.value), state.range.to || state.score.masterBars.length));

@@ -279,8 +279,23 @@ export function optimizeFingering(m, score, trackIndex, { fromBar = 0, toBar = I
 // 5/6-string bass to 4-string
 // ---------------------------------------------------------------------------
 
+/** Bass-like: low tuning, a bass instrument sound (GM 33-40), or "bass" in the name. */
+export function looksLikeBass(staff) {
+  const program = staff.track?.playbackInfo?.program;
+  return Math.min(...staff.tuning) < 40 || (program >= 32 && program <= 39) || /bass/i.test(staff.track?.name || '');
+}
+
 export function canConvertToFourString(staff) {
-  return isStringed(staff) && staff.tuning.length > 4 && Math.min(...staff.tuning) < 40;
+  return isStringed(staff) && staff.tuning.length > 4 && looksLikeBass(staff);
+}
+
+/** Why a track can't be converted, or null when it can. */
+export function fourStringBlocker(track) {
+  const staves = track.staves.filter(isStringed);
+  if (staves.length === 0) return 'This track has no strings to convert.';
+  if (staves.some(canConvertToFourString)) return null;
+  if (staves.every((s) => s.tuning.length <= 4)) return `${track.name} already has ${staves[0].tuning.length} strings.`;
+  return `${track.name} looks like a guitar part, so it isn't converted to bass.`;
 }
 
 /**
@@ -301,6 +316,7 @@ export function convertToFourStringBass(m, score, trackIndex) {
         for (const beat of voice.beats) {
           for (const note of beat.notes) {
             let p = notePitch(staff, note);
+            if (!Number.isFinite(p)) continue; // note on a string the tuning doesn't have
             while (p < lowest) {
               p += 12;
               report.octaveUp++;
@@ -322,11 +338,16 @@ export function convertToFourStringBass(m, score, trackIndex) {
     for (const bar of staff.bars) {
       for (const voice of bar.voices) {
         for (const beat of voice.beats) {
-          const notes = [...beat.notes].sort((a, b) => pitches.get(b) - pitches.get(a));
+          const notes = [...beat.notes].sort((a, b) => (pitches.get(b) ?? 0) - (pitches.get(a) ?? 0));
           const used = new Set();
           for (const note of notes) {
             const p = pitches.get(note);
             let placed = false;
+            if (p === undefined) {
+              beat.removeNote(note);
+              report.dropped++;
+              continue;
+            }
             for (let s = BASS_4_STANDARD.length; s >= 1; s--) {
               const fret = p - BASS_4_STANDARD[BASS_4_STANDARD.length - s];
               if (used.has(s) || fret < 0 || fret > MAX_FRET) continue;
