@@ -1001,8 +1001,8 @@ $('tool-track').addEventListener('change', (e) => {
   state.toolTrack = Number(e.target.value);
   updateToolButtons();
 });
-$('tool-optimize').addEventListener('click', runOptimize);
-$('tool-convert').addEventListener('click', runConvert);
+$('tool-optimize').addEventListener('click', () => runOptimize());
+$('tool-convert').addEventListener('click', () => runConvert());
 $('range-from').addEventListener('change', (e) => setRange(Number(e.target.value), state.range.to || state.score.masterBars.length));
 $('range-to').addEventListener('change', (e) => setRange(state.range.from, Number(e.target.value)));
 $('range-all').addEventListener('click', () => setRange(1, state.score.masterBars.length));

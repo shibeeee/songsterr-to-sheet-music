@@ -16,7 +16,7 @@ Turn any Songsterr tab into printable sheet music: standard notation, tablature,
 - **Listen along**: play, pause, seek, loop (drag across bars to loop a section), count-in, metronome, speed from 25% to 150%, and per-track mute and solo.
 - **Open your own files**: Guitar Pro 3 to 7, MusicXML, alphaTex or saved Songsterr data. Drag a file onto the page or use **Open file**.
 - **Edit the music**: click a note to change its fret, string, length or technique, add and remove notes, beats and bars, rename sections, change tempo, time signature and repeats, and rename the song or tracks. Full undo and redo; download as Guitar Pro to keep your version.
-- **Optimize fingering**: re-chooses the string and fret of every note so the part needs the least hand movement, keeping every pitch. Chords stay playable, and tied notes, hammer-ons and slides stay on one string. Works on guitar and bass, for the whole song or just the bars shown.
+- **Optimize fingering**: re-chooses the string and fret of every note so the part needs the fewest hand shifts, keeping every pitch. It follows the fretting hand (one finger per fret over four frets), stays in position as long as it can, and shifts during rests and open strings when it has to. Chords stay playable, and tied notes, hammer-ons and slides stay on one string. Works on guitar and bass, for the whole song or just the bars shown.
 - **Convert 5 or 6-string bass to 4-string** (standard E A D G): notes below low E move up an octave, then the fingering is optimized.
 - **Show only some bars** (for example bars 9 to 24) on screen and when printing.
 - **Remembers** your recent songs and display settings in your browser.

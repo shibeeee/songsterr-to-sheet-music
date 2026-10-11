@@ -2,16 +2,23 @@
 //
 // optimizeFingering() keeps every pitch and only changes string/fret, picking
 // the positions that need the least hand movement over the whole passage.
-// It works like a route planner: each moment in the music (an "event", all
-// notes starting together) has a list of playable shapes, and dynamic
-// programming finds the cheapest path through them, where cost is mostly how
-// far the hand has to shift between shapes.
+//
+// The model follows the fretting hand. At any moment the hand sits in a
+// position: the index finger at fret h covers frets h..h+3, one finger per
+// fret. A shape (one note or a chord) can be played from a position when all
+// of its fretted notes fall inside that window; open strings fit anywhere.
+// Dynamic programming walks through the music and finds the sequence of
+// (shape, position) pairs with the lowest total cost, where cost is mostly
+// hand shifts: every change of position costs a fixed amount plus a little
+// per fret travelled, so the result stays in one position as long as it can
+// and shifts as rarely and as little as possible.
 //
 // Rules a player would follow are built into the costs:
-//   - a chord must fit under the hand (span of about four frets),
+//   - a chord must fit under the hand (a five-fret stretch at most),
 //   - tied notes stay on the same string and fret,
 //   - hammer-ons, pull-offs and slides stay on one string,
-//   - shifting is cheaper during an open string or after a long note/rest,
+//   - shifting is cheaper during an open string or after a long note or rest,
+//   - lower positions win ties, very high positions cost a little extra,
 //   - natural harmonics are left where they are (moving them changes them).
 //
 // convertToFourStringBass() retunes a 5- or 6-string bass track to standard
@@ -20,8 +27,19 @@
 export const MAX_FRET = 24;
 export const BASS_4_STANDARD = [43, 38, 33, 28]; // G D A E (high to low)
 
-const HAND_SPAN = 3; // frets the hand covers without shifting (index to pinky = 4 frets)
+const HAND_SPAN = 3; // index at h reaches h+3 (four frets) without stretching
+const MAX_STRETCH = 4; // a five-fret stretch is allowed, at a price
 const MAX_CANDIDATES = 48;
+
+// Costs. A shift is the thing to avoid; everything else breaks ties.
+const SHIFT_COST = 3;
+const SHIFT_PER_FRET = 0.35;
+const STRETCH_COST = 2;
+const POSITION_COST = 0.04; // per fret of hand position, keeps things low
+const HIGH_POSITION_COST = 0.15; // extra per fret above the 12th
+const STRING_CROSS_COST = 0.15;
+const LEGATO_BREAK_COST = 8;
+const HALF_NOTE_TICKS = 1920; // alphaTab uses 960 ticks per quarter note
 
 /** Sounding pitch of a note on its staff (capo and harmonics ignored). */
 export function notePitch(staff, note) {
@@ -70,26 +88,39 @@ function buildEvents(staff, fromBar, toBar) {
 // Candidate shapes
 // ---------------------------------------------------------------------------
 
-/** Hand window for a shape: the index-finger positions that reach all fretted notes. */
-function windowOf(frets) {
+/** Fretted extent of a shape, or null when it only uses open strings. */
+function extentOf(frets) {
   const fretted = frets.filter((f) => f > 0);
-  if (fretted.length === 0) return null; // only open strings: any position works
+  if (fretted.length === 0) return null;
   const lo = Math.min(...fretted);
   const hi = Math.max(...fretted);
-  return { from: Math.max(1, hi - HAND_SPAN), to: lo, span: hi - lo, lo, hi };
+  return { lo, hi, span: hi - lo };
 }
 
-function staticCost(frets, strings, window) {
+/** Hand positions (index-finger frets) that can play a shape. */
+function positionsFor(extent, maxFret) {
+  if (!extent) return null; // open strings only: any position
+  const out = [];
+  const reach = extent.span <= HAND_SPAN ? HAND_SPAN : MAX_STRETCH;
+  for (let h = Math.max(1, extent.hi - reach); h <= extent.lo && h <= maxFret; h++) out.push(h);
+  return out;
+}
+
+function shapeCost(frets, strings, extent) {
   let cost = 0;
-  // Gentle pull towards lower positions, so equal-movement choices stay low.
-  for (const f of frets) cost += 0.02 * f + (f > 12 ? 0.05 * (f - 12) : 0);
-  if (window && window.span > HAND_SPAN) cost += 3 * (window.span - HAND_SPAN);
+  if (extent && extent.span > HAND_SPAN) cost += STRETCH_COST * (extent.span - HAND_SPAN);
   if (strings.length > 1) {
     // Chords: prefer shapes on neighbouring strings.
     const spread = Math.max(...strings) - Math.min(...strings) + 1 - strings.length;
     cost += 0.3 * Math.max(0, spread);
   }
+  // Tiny pull towards lower frets so otherwise equal choices stay low.
+  for (const f of frets) cost += 0.005 * f;
   return cost;
+}
+
+function isFixed(note) {
+  return note.harmonicType !== 0 && note.harmonicType !== undefined;
 }
 
 /**
@@ -101,27 +132,25 @@ function candidatesFor(staff, ev, maxFret) {
   const movable = ev.notes.filter((n) => !isFixed(n));
   const fixed = ev.notes.filter(isFixed);
   const used = new Set(fixed.map((n) => n.string));
-  const pitches = movable.map((n) => n.pitch);
   const results = [];
+
+  const make = (place) => {
+    const frets = [...[...place.values()].map((c) => c.fret), ...fixed.map((n) => n.fret)];
+    const stringsUsed = [...[...place.values()].map((c) => c.string), ...fixed.map((n) => n.string)];
+    const extent = extentOf(frets);
+    return { place, extent, stringsUsed, cost: shapeCost(frets, stringsUsed, extent) };
+  };
 
   const assign = (i, chosen) => {
     if (results.length > 4000) return;
     if (i === movable.length) {
-      const frets = [...chosen.map((c) => c.fret), ...fixed.map((n) => n.fret)];
-      const allStrings = [...chosen.map((c) => c.string), ...fixed.map((n) => n.string)];
-      const window = windowOf(frets);
-      if (window && window.span > HAND_SPAN + 2) return; // unplayable stretch
-      results.push({
-        place: new Map(chosen.map((c, k) => [movable[k], c])),
-        window,
-        stringsUsed: allStrings,
-        cost: staticCost(frets, allStrings, window)
-      });
+      const cand = make(new Map(chosen.map((c, k) => [movable[k], { string: c.string, fret: c.fret }])));
+      if (!cand.extent || cand.extent.span <= MAX_STRETCH) results.push(cand);
       return;
     }
     for (let s = 1; s <= strings; s++) {
       if (used.has(s)) continue;
-      const fret = pitches[i] - stringPitch(staff, s);
+      const fret = movable[i].pitch - stringPitch(staff, s);
       if (fret < 0 || fret > maxFret) continue;
       used.add(s);
       chosen.push({ string: s, fret });
@@ -132,64 +161,35 @@ function candidatesFor(staff, ev, maxFret) {
   };
   assign(0, []);
 
-  // Always keep the current placement, so nothing gets worse than the original.
-  const current = {
-    place: new Map(movable.map((n) => [n, { string: n.string, fret: n.fret }])),
-    window: windowOf(ev.notes.map((n) => n.fret)),
-    stringsUsed: ev.notes.map((n) => n.string),
-    current: true
-  };
-  current.cost = staticCost(ev.notes.map((n) => n.fret), current.stringsUsed, current.window);
   results.sort((a, b) => a.cost - b.cost);
   const top = results.slice(0, MAX_CANDIDATES);
+  // Keep the current placement too, so there is always a way through.
   const same = (c) => movable.every((n) => c.place.get(n).string === n.string);
-  if (!top.some(same)) top.push(current);
+  if (!top.some(same)) {
+    const current = make(new Map(movable.map((n) => [n, { string: n.string, fret: n.fret }])));
+    if (current.extent && current.extent.span > MAX_STRETCH) current.cost += 20; // awkward, but possible
+    top.push(current);
+  }
+  for (const cand of top) {
+    const positions = positionsFor(cand.extent, maxFret);
+    // Too wide for one hand position (e.g. two voices far apart): play it
+    // from its lowest fretted note rather than giving up on the passage.
+    cand.positions = positions === null ? null : positions.length ? positions : [Math.min(cand.extent.lo, maxFret)];
+  }
   return top;
-}
-
-function isFixed(note) {
-  return note.harmonicType !== 0 && note.harmonicType !== undefined;
 }
 
 // ---------------------------------------------------------------------------
 // Transitions
 // ---------------------------------------------------------------------------
 
-function windowDistance(a, b) {
-  if (!a || !b) return 0;
-  if (b.to < a.from) return a.from - b.to;
-  if (b.from > a.to) return b.from - a.to;
-  return 0;
+function shiftCost(from, to, discount) {
+  if (from === to) return 0;
+  return (SHIFT_COST + SHIFT_PER_FRET * Math.abs(from - to)) * discount;
 }
 
-/**
- * Cost of moving from one shape to the next.
- * `held` is the hand window carried through open-string-only shapes.
- */
-function transitionCost(prevEv, prev, held, ev, cand, links) {
-  let cost = 0;
-  const target = cand.window;
-  const distance = windowDistance(held, target);
-  if (distance > 0) {
-    let shift = 1 + 0.6 * distance;
-    // Time to move: after long notes/rests or during open strings it's easier.
-    const gap = ev.time - prevEv.time;
-    if (gap >= 1920) shift *= 0.5; // a half note or more (960 ticks per quarter)
-    if (!prev.window) shift *= 0.6;
-    cost += shift;
-  }
-  // String crossings in single-note lines.
-  if (prev.stringsUsed.length === 1 && cand.stringsUsed.length === 1) {
-    cost += 0.12 * Math.abs(prev.stringsUsed[0] - cand.stringsUsed[0]);
-  }
-  // Ties, hammer-ons/pull-offs and slides must stay on one string.
-  for (const [origin, dest, hard] of links) {
-    const a = prev.place.get(origin) ?? (prevEv.notes.includes(origin) ? origin : null);
-    const b = cand.place.get(dest) ?? (ev.notes.includes(dest) ? dest : null);
-    if (!a || !b) continue;
-    if (a.string !== b.string) cost += hard ? 1e6 : 8;
-  }
-  return cost;
+function positionCost(h) {
+  return POSITION_COST * h + (h > 12 ? HIGH_POSITION_COST * (h - 12) : 0);
 }
 
 /** Links between notes that must share a string: [origin, destination, mustMatch]. */
@@ -207,9 +207,31 @@ function linksBetween(prevEv, ev) {
   return links;
 }
 
+/** Costs that depend on which shapes follow each other (not on the hand position). */
+function pairCost(prev, cand, links) {
+  let cost = 0;
+  if (prev.stringsUsed.length === 1 && cand.stringsUsed.length === 1) {
+    cost += STRING_CROSS_COST * Math.abs(prev.stringsUsed[0] - cand.stringsUsed[0]);
+  }
+  for (const [origin, dest, hard] of links) {
+    const a = prev.place.get(origin) ?? origin;
+    const b = cand.place.get(dest) ?? dest;
+    if (a.string !== b.string) cost += hard ? 1e6 : LEGATO_BREAK_COST;
+  }
+  return cost;
+}
+
 // ---------------------------------------------------------------------------
 // Optimizer
 // ---------------------------------------------------------------------------
+
+/** Expands a candidate into (candidate, hand position) states. */
+function statesFor(cand, maxFret) {
+  if (cand.positions) return cand.positions.map((h) => ({ cand, h }));
+  const all = [];
+  for (let h = 1; h <= maxFret - HAND_SPAN; h++) all.push({ cand, h });
+  return all;
+}
 
 /**
  * Re-chooses string and fret for every note in the range, keeping pitches.
@@ -227,27 +249,58 @@ export function optimizeFingering(m, score, trackIndex, { fromBar = 0, toBar = I
 
     const options = events.map((ev) => candidatesFor(staff, ev, maxFret));
 
-    // Viterbi over events. Each entry remembers the hand window it carries
-    // forward (open-string shapes keep the previous window).
-    let layer = options[0].map((cand) => ({ cost: cand.cost, held: cand.window, back: null, cand }));
-    const layers = [layer];
+    // Viterbi over (shape, hand position) states.
+    let layer = options[0].flatMap((cand) => statesFor(cand, maxFret)).map((st) => ({
+      ...st,
+      cost: st.cand.cost + (st.cand.extent ? positionCost(st.h) : 0),
+      back: null
+    }));
     for (let i = 1; i < events.length; i++) {
-      const links = linksBetween(events[i - 1], events[i]);
-      const next = options[i].map((cand) => {
-        let best = null;
-        for (const p of layer) {
-          const c = p.cost + transitionCost(events[i - 1], p.cand, p.held, events[i], cand, links);
-          if (!best || c < best.cost) best = { cost: c, back: p };
+      const prevEv = events[i - 1];
+      const ev = events[i];
+      const links = linksBetween(prevEv, ev);
+      const gapDiscount = ev.time - prevEv.time >= HALF_NOTE_TICKS ? 0.5 : 1;
+      const pairwise = links.length > 0 || options[i].some((c) => c.stringsUsed.length === 1);
+
+      // Best previous state for each hand position (when only the position matters).
+      const bestAt = new Map();
+      for (const p of layer) {
+        const cur = bestAt.get(p.h);
+        if (!cur || p.cost < cur.cost) bestAt.set(p.h, p);
+      }
+
+      const next = [];
+      for (const cand of options[i]) {
+        for (const { h } of statesFor(cand, maxFret)) {
+          let best = null;
+          let bestCost = Infinity;
+          const sources = pairwise ? layer : bestAt.values();
+          for (const p of sources) {
+            const discount = gapDiscount * (p.cand.extent ? 1 : 0.5);
+            const c = p.cost + shiftCost(p.h, h, discount) + (pairwise ? pairCost(p.cand, cand, links) : 0);
+            if (c < bestCost) {
+              bestCost = c;
+              best = p;
+            }
+          }
+          if (!best) continue;
+          next.push({ cand, h, back: best, cost: bestCost + cand.cost + (cand.extent ? positionCost(h) : 0) });
         }
-        return { cost: best.cost + cand.cost, held: cand.window || best.back.held, back: best.back, cand };
-      });
-      layers.push(next);
+      }
+      // Never let the path break: if nothing connects, restart from the
+      // cheapest state so far (only possible with very odd input).
+      if (next.length === 0) {
+        const restart = layer.reduce((a, b) => (b.cost < a.cost ? b : a));
+        for (const cand of options[i]) {
+          for (const { h } of statesFor(cand, maxFret)) next.push({ cand, h, back: restart, cost: restart.cost + SHIFT_COST + cand.cost });
+        }
+      }
       layer = next;
     }
 
     // Walk back the cheapest path and apply it.
     let node = layer.reduce((a, b) => (b.cost < a.cost ? b : a));
-    for (let i = events.length - 1; i >= 0; i--) {
+    while (node) {
       for (const [note, pos] of node.cand.place) {
         total++;
         if (note.string !== pos.string || note.fret !== pos.fret) {

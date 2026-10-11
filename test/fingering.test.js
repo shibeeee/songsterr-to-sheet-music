@@ -156,3 +156,58 @@ test('recognises basses by tuning, instrument sound or name, and explains when i
   const four = scoreFrom(BASS_4_STANDARD, [[[[0, 0]]]]);
   assert.match(fourStringBlocker(four.tracks[0]), /already has 4 strings/);
 });
+
+test('an unplayable moment does not stop the rest from being optimized', () => {
+  // A scale on the low E string with a very wide two-note chord in the middle.
+  const line = [3, 5, 7, 8].map((f) => [[5, f]]);
+  let score = scoreFrom(GUITAR, [[...line, [[5, 1], [0, 12]], ...[10, 12, 14, 15].map((f) => [[5, f]])]]);
+  const before = pitches(score);
+  const result = optimizeFingering(m, score, 0);
+  score = rebuildScore(alphaTab, score, settings);
+  assert.deepEqual(pitches(score), before);
+  assert.ok(result.changed >= 4, `moved ${result.changed}`);
+  const last = score.tracks[0].staves[0].bars[0].voices[0].beats.at(-1).notes[0];
+  assert.ok(last.fret < 15, 'the end of the line moved to an easier position');
+});
+
+test('reduces hand shifts on a long line written at the lowest frets', () => {
+  // A two-octave G major scale up and down, every note at its lowest fret.
+  const major = [0, 2, 4, 5, 7, 9, 11];
+  const degrees = [...Array(15).keys(), ...[...Array(14).keys()].reverse()];
+  const notes = degrees.map((d) => 31 + 12 * Math.floor(d / 7) + major[d % 7]);
+  const tuning = BASS_4_STANDARD;
+  const lowest = (p) => {
+    let best = null;
+    tuning.forEach((t, s) => {
+      const f = p - t;
+      if (f >= 0 && (!best || f < best[1])) best = [s, f];
+    });
+    return best;
+  };
+  const beats = notes.map((p) => [lowest(p)]);
+  let score = scoreFrom(tuning, [beats.slice(0, 8), beats.slice(8, 16), beats.slice(16, 24), beats.slice(24)]);
+  const shiftsBefore = handShifts(score);
+  optimizeFingering(m, score, 0);
+  score = rebuildScore(alphaTab, score, settings);
+  assert.ok(handShifts(score) <= 2, `shifts ${handShifts(score)} (was ${shiftsBefore})`);
+});
+
+/** Fewest position changes needed to play the part, with a four-fret hand. */
+function handShifts(score) {
+  let layer = new Map([[0, 0]]);
+  for (const bar of score.tracks[0].staves[0].bars) {
+    for (const beat of bar.voices[0].beats) {
+      const fr = beat.notes.map((n) => n.fret).filter((f) => f > 0);
+      if (!fr.length) continue;
+      const next = new Map();
+      for (let h = 1; h <= 21; h++) {
+        if (h > Math.min(...fr) || Math.max(...fr) > h + 3) continue;
+        let best = Infinity;
+        for (const [p, c] of layer) best = Math.min(best, c + (p === 0 || p === h ? 0 : 1));
+        next.set(h, best);
+      }
+      layer = next;
+    }
+  }
+  return Math.min(...layer.values());
+}
