@@ -342,7 +342,9 @@ body.horizontal .paper-frame { max-width: none; }
 .player-status:empty { display: none; }
 
 /* Toast + drop overlay */
-.toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 60; background: var(--primary); color: var(--on-primary); padding: 8px 14px; border-radius: var(--radius); font-size: 14px; box-shadow: var(--shadow-pop); }
+.toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 60; background: var(--primary); color: var(--on-primary); padding: 8px 14px; border-radius: var(--radius); font-size: 14px; box-shadow: var(--shadow-pop); display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 32px); }
+.toast button { background: none; border: 0; padding: 0; color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; white-space: nowrap; }
+.tool-btn { margin-top: 10px; justify-content: center; }
 .drop-overlay { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(2px); }
 .drop-overlay p { margin: 0; padding: 36px 56px; border: 2px dashed var(--line-strong); border-radius: 12px; background: var(--panel); font-size: 18px; font-weight: 600; }
 

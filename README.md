@@ -16,6 +16,8 @@ Turn any Songsterr tab into printable sheet music: standard notation, tablature,
 - **Listen along**: play, pause, seek, loop (drag across bars to loop a section), count-in, metronome, speed from 25% to 150%, and per-track mute and solo.
 - **Open your own files**: Guitar Pro 3 to 7, MusicXML, alphaTex or saved Songsterr data. Drag a file onto the page or use **Open file**.
 - **Edit the music**: click a note to change its fret, string, length or technique, add and remove notes, beats and bars, rename sections, change tempo, time signature and repeats, and rename the song or tracks. Full undo and redo; download as Guitar Pro to keep your version.
+- **Optimize fingering**: re-chooses the string and fret of every note so the part needs the least hand movement, keeping every pitch. Chords stay playable, and tied notes, hammer-ons and slides stay on one string. Works on guitar and bass, for the whole song or just the bars shown.
+- **Convert 5 or 6-string bass to 4-string** (standard E A D G): notes below low E move up an octave, then the fingering is optimized.
 - **Show only some bars** (for example bars 9 to 24) on screen and when printing.
 - **Remembers** your recent songs and display settings in your browser.
 - Keyboard shortcuts: <kbd>Space</kbd> play or pause, <kbd>Esc</kbd> stop, <kbd>L</kbd> loop, <kbd>M</kbd> metronome, <kbd>+</kbd>/<kbd>-</kbd> size, <kbd>P</kbd> print, <kbd>E</kbd> edit.
@@ -79,6 +81,7 @@ Open <http://localhost:3000>. Set `PORT` to use another port, or `HOST=0.0.0.0` 
 | `public/js/storage.js` | Recent songs and saved settings. |
 | `public/js/editor.js` | Editing operations (notes, rhythm, bars, song details) and undo snapshots. |
 | `public/js/edit-ui.js` | The edit panel, selection highlight and editing keys. |
+| `public/js/fingering.js` | Fingering optimizer and 5/6-string to 4-string bass conversion. |
 | `server.js` | Optional local server (`npm start`). |
 | `relay/worker.js`, `wrangler.toml` | The relay for the hosted site and its Cloudflare settings. |
 | `scripts/build-static.js` | Builds the static site into `dist/` (`npm run build`). |

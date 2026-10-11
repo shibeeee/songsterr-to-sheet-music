@@ -247,6 +247,17 @@
           <p class="panel-note">Ticked tracks are shown. Use <svg class="icon inline" aria-hidden="true"><use href="#i-volume" /></svg> and <svg class="icon inline" aria-hidden="true"><use href="#i-headphones" /></svg> to mute or solo during playback.</p>
         </section>
 
+        <section class="panel" id="fingering-panel" hidden>
+          <h2>Fingering</h2>
+          <div class="field">
+            <label for="tool-track">Track</label>
+            <select id="tool-track"></select>
+          </div>
+          <button type="button" class="btn block tool-btn" id="tool-optimize">Optimize fingering</button>
+          <button type="button" class="btn block tool-btn" id="tool-convert" hidden>Convert to 4-string bass</button>
+          <p class="panel-note" id="tool-note"></p>
+        </section>
+
         <section class="panel">
           <h2>Notation</h2>
           <div class="segmented" role="radiogroup" aria-label="Notation">

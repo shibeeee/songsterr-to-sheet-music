@@ -6,6 +6,7 @@ import { prefs, recentSongs, rememberSong, forgetSong } from './storage.js';
 import { setupBookmarklet, listenForBookmarklet } from './bookmarklet.js';
 import { snapshot, restore, rebuildScore } from './editor.js';
 import { createEditUI } from './edit-ui.js';
+import { optimizeFingering, convertToFourStringBass, canConvertToFourString } from './fingering.js';
 
 const $ = (id) => document.getElementById(id);
 // Resolve against the page so the app also works from a sub-path
@@ -122,12 +123,20 @@ function setStatus(message, kind = 'info', target = $('status')) {
 }
 
 let toastTimer = 0;
-function toast(message) {
+function toast(message, action = null) {
   const el = $('toast');
-  el.textContent = message;
+  el.replaceChildren(Object.assign(document.createElement('span'), { textContent: message }));
+  if (action) {
+    const button = Object.assign(document.createElement('button'), { type: 'button', textContent: action.label });
+    button.addEventListener('click', () => {
+      el.hidden = true;
+      action.run();
+    });
+    el.append(button);
+  }
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.hidden = true), 2200);
+  toastTimer = setTimeout(() => (el.hidden = true), action ? 7000 : 2600);
 }
 
 function showWarnings(warnings) {
@@ -361,6 +370,7 @@ function describeTrack(track) {
 }
 
 function buildTrackList() {
+  syncTools();
   const list = $('track-list');
   list.replaceChildren();
   state.score.tracks.forEach((track, index) => {
@@ -519,7 +529,84 @@ function setRange(from, to) {
   const b = Math.min(Math.max(a, Math.round(to) || last), last);
   state.range = { from: a, to: b === last ? 0 : b };
   syncRange();
+  syncTools();
   relayout();
+}
+
+// ---------------------------------------------------------------------------
+// Fingering tools
+// ---------------------------------------------------------------------------
+
+function stringedTracks() {
+  return state.score.tracks.filter((t) => t.staves.some((s) => !s.isPercussion && s.tuning.length > 0));
+}
+
+function syncTools() {
+  if (!state.score) return;
+  const tracks = stringedTracks();
+  $('fingering-panel').hidden = tracks.length === 0;
+  if (!tracks.length) return;
+  const select = $('tool-track');
+  const previous = Number(select.value);
+  select.replaceChildren(
+    ...tracks.map((t) => Object.assign(document.createElement('option'), { value: String(t.index), textContent: t.name }))
+  );
+  const preferred = tracks.find((t) => t.index === previous) || tracks.find((t) => state.visible.includes(t.index)) || tracks[0];
+  select.value = String(preferred.index);
+  updateToolButtons();
+}
+
+function updateToolButtons() {
+  const track = state.score.tracks[Number($('tool-track').value)];
+  if (!track) return;
+  $('tool-convert').hidden = !track.staves.some(canConvertToFourString);
+  const last = state.score.masterBars.length;
+  const to = state.range.to || last;
+  const scope = state.range.from === 1 && to === last ? 'every bar' : `bars ${state.range.from} to ${to} (the bars shown)`;
+  $('tool-note').textContent =
+    `Keeps every note's pitch and moves notes to the positions that need the least hand movement. Works on ${scope}.`;
+}
+
+function toolRange() {
+  return { fromBar: state.range.from - 1, toBar: state.range.to ? state.range.to - 1 : Infinity };
+}
+
+function runOptimize() {
+  const index = Number($('tool-track').value);
+  let result = null;
+  commitEdit((score, m) => {
+    result = optimizeFingering(m, score, index, toolRange());
+    return editUI.selection() ?? undefined;
+  });
+  if (!result) return;
+  const name = state.score.tracks[index].name;
+  if (result.changed === 0) toast(`${name} already uses the easiest positions`);
+  else toast(`Moved ${result.changed} of ${result.notes} notes in ${name} to easier positions`, { label: 'Undo', run: undoEdit });
+  ensureVisible(index);
+}
+
+function runConvert() {
+  const index = Number($('tool-track').value);
+  let report = null;
+  commitEdit((score, m) => {
+    report = convertToFourStringBass(m, score, index);
+    return editUI.selection() ?? undefined;
+  });
+  if (!report) return;
+  const parts = ['Converted to 4-string bass (E A D G)'];
+  if (report.octaveUp) parts.push(`${report.octaveUp} low note${report.octaveUp === 1 ? '' : 's'} moved up an octave`);
+  if (report.octaveDown) parts.push(`${report.octaveDown} high note${report.octaveDown === 1 ? '' : 's'} moved down an octave`);
+  if (report.dropped) parts.push(`${report.dropped} note${report.dropped === 1 ? '' : 's'} left out (too many at once)`);
+  toast(parts.join('. '), { label: 'Undo', run: undoEdit });
+  ensureVisible(index);
+}
+
+/** Shows the track that was just changed, so the result is on screen. */
+function ensureVisible(index) {
+  if (state.visible.includes(index)) return;
+  state.visible = [...state.visible, index];
+  buildTrackList();
+  render();
 }
 
 // ---------------------------------------------------------------------------
@@ -886,6 +973,9 @@ $('opt-zoom').addEventListener('input', (e) => ($('zoom-value').textContent = `$
 $('opt-zoom').addEventListener('change', (e) => setOption('zoom', Number(e.target.value), 'layout'));
 $('opt-paper').addEventListener('change', (e) => setOption('paper', e.target.value, 'none'));
 
+$('tool-track').addEventListener('change', updateToolButtons);
+$('tool-optimize').addEventListener('click', runOptimize);
+$('tool-convert').addEventListener('click', runConvert);
 $('range-from').addEventListener('change', (e) => setRange(Number(e.target.value), state.range.to || state.score.masterBars.length));
 $('range-to').addEventListener('change', (e) => setRange(state.range.from, Number(e.target.value)));
 $('range-all').addEventListener('click', () => setRange(1, state.score.masterBars.length));
@@ -949,6 +1039,11 @@ document.addEventListener('keydown', (e) => {
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter'))) return;
   if (editUI.handleKey(e)) {
     e.preventDefault();
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    e.shiftKey ? redoEdit() : undoEdit();
     return;
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
