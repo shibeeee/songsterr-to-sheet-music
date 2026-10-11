@@ -34,11 +34,11 @@ export function isSongsterrLink(text) {
 
 /**
  * Accepts a Songsterr link or a bare song id.
- * @returns {{ songId: number, url: string | null, trackIndex: number | null }}
+ * @returns {{ songId: number, url: string | null, trackIndex: number | null, revisionId: number | null }}
  */
 export function parseSongsterrUrl(input) {
   const text = String(input || '').trim();
-  if (/^\d+$/.test(text)) return { songId: Number(text), url: null, trackIndex: null };
+  if (/^\d+$/.test(text)) return { songId: Number(text), url: null, trackIndex: null, revisionId: null };
 
   let url;
   try {
@@ -49,14 +49,23 @@ export function parseSongsterrUrl(input) {
   if (!/(^|\.)songsterr\.com$/i.test(url.hostname)) {
     throw new SongsterrError('Only songsterr.com links are supported.', 400);
   }
-  // e.g. /a/wsa/artist-song-tab-s12345, ...-s12345t2 (t = selected track)
-  const match = url.pathname.match(/(?:-|\/)s(\d+)(?:t(\d+))?\/?$/);
+  // e.g. /a/wsa/artist-song-tab-s12345
+  //      ...-s12345t2            (t = selected track)
+  //      ...-s12345/r4525144     (r = a specific revision of the tab)
+  //      ...-s12345t2/r4525144
+  const match = url.pathname.match(/(?:-|\/)s(\d+)(?:t(\d+))?(?:\/r(\d+)(?:t(\d+))?)?\/?$/);
   if (!match) {
-    throw new SongsterrError('Could not find a song id in that link. It should end in something like "-s12345".', 400);
+    throw new SongsterrError('Could not find a song id in that link. It should contain something like "-s12345".', 400);
   }
   url.hash = '';
   url.search = '';
-  return { songId: Number(match[1]), url: url.toString(), trackIndex: match[2] ? Number(match[2]) : null };
+  const track = match[2] ?? match[4];
+  return {
+    songId: Number(match[1]),
+    url: url.toString(),
+    trackIndex: track ? Number(track) : null,
+    revisionId: match[3] ? Number(match[3]) : null
+  };
 }
 
 /** Builds a canonical tab page link. */
@@ -118,8 +127,29 @@ async function tryGet(get, url, type, errors, label) {
   return null;
 }
 
-async function findRevision(songId, pageUrl, get) {
+/** Finds the revision the link asks for, from the tab page or the revision list. */
+async function findSpecificRevision(songId, revisionId, pageUrl, get, errors) {
+  const html = await tryGet(get, pageUrl, 'text', errors, 'tab page');
+  const fromPage = html && extractStateFromHtml(html);
+  if (fromPage && Number(fromPage.revisionId) === revisionId) return fromPage;
+
+  const list = await tryGet(get, `${SONGSTERR}/api/meta/${songId}/revisions`, 'json', errors, 'revision list');
+  const entries = Array.isArray(list) ? list : list?.revisions || [];
+  const match = entries.find((r) => r && Number(r.revisionId) === revisionId && r.image);
+  if (match) {
+    // Revision entries may lack the song details; borrow them from the current meta.
+    const meta = fromPage || (await tryGet(get, `${SONGSTERR}/api/meta/${songId}`, 'json', errors, 'song info'));
+    return { ...(meta || {}), ...match, tracks: match.tracks || meta?.tracks };
+  }
+  return null;
+}
+
+async function findRevision(songId, pageUrl, get, wantedRevision = null) {
   const errors = [];
+  if (wantedRevision) {
+    const specific = await findSpecificRevision(songId, wantedRevision, pageUrl, get, errors);
+    if (specific) return specific;
+  }
   const meta = await tryGet(get, `${SONGSTERR}/api/meta/${songId}`, 'json', errors, 'song info');
   const fromMeta = pickRevision(meta);
   if (fromMeta) return fromMeta;
@@ -160,13 +190,16 @@ async function fetchTrack(songId, revisionId, image, partId, get) {
  * @param {{ get: Function, onProgress?: (message: string) => void }} options
  */
 export async function fetchSongsterrSong(input, { get, onProgress = () => {} }) {
-  const { songId, url, trackIndex } = parseSongsterrUrl(input);
+  const { songId, url, trackIndex, revisionId: wantedRevision } = parseSongsterrUrl(input);
   const pageUrl = url || `${SONGSTERR}/a/wsa/tab-s${songId}`;
 
   onProgress('Finding the song...');
-  const revision = await findRevision(songId, pageUrl, get);
+  const revision = await findRevision(songId, pageUrl, get, wantedRevision);
   const { revisionId, image } = revision;
   const warnings = [];
+  if (wantedRevision && Number(revisionId) !== wantedRevision) {
+    warnings.push(`Revision ${wantedRevision} from the link wasn't available, so this is the latest version of the tab.`);
+  }
   const tracks = [];
   const metas = Array.isArray(revision.tracks) ? revision.tracks.map((t, i) => ({ ...t, partId: t.partId ?? i })) : [];
 

@@ -166,3 +166,54 @@ test('the server getter sends browser headers and decodes gzip', async () => {
   const missing = createServerGetter(async () => new Response('', { status: 404 }));
   assert.deepEqual(await missing('https://www.songsterr.com/x', 'text'), { ok: false, status: 404 });
 });
+
+test('reads revision links like ...-s481734/r4525144', () => {
+  const r = parseSongsterrUrl('https://www.songsterr.com/a/wsa/some-artist-some-song-bass-tab-s481734/r4525144');
+  assert.equal(r.songId, 481734);
+  assert.equal(r.revisionId, 4525144);
+  assert.equal(r.trackIndex, null);
+  const t = parseSongsterrUrl('https://www.songsterr.com/a/wsa/x-tab-s5t2/r9');
+  assert.deepEqual([t.songId, t.trackIndex, t.revisionId], [5, 2, 9]);
+  assert.equal(parseSongsterrUrl('https://www.songsterr.com/a/wsa/x-tab-s5/r9/').revisionId, 9);
+  assert.equal(isSongsterrLink('https://www.songsterr.com/a/wsa/x-tab-s5/r9'), true);
+});
+
+test('loads the revision named in the link from the tab page', async () => {
+  const link = 'https://www.songsterr.com/a/wsa/x-bass-tab-s50/r700';
+  const old = { songId: 50, revisionId: 700, image: 'old', title: 'Song', artist: 'Band', tracks: [{ partId: 0, title: 'Bass' }] };
+  const get = fakeGet({
+    [link]: `<script id="state">${JSON.stringify({ meta: { current: old } })}</script>`,
+    'https://www.songsterr.com/api/meta/50': { songId: 50, revisionId: 999, image: 'new', tracks: [{ partId: 0 }] },
+    [`${CDN}/50/700/old/0.json`]: track('Old bass')
+  });
+  const song = await fetchSongsterrSong(link, { get });
+  assert.equal(song.revisionId, 700);
+  assert.equal(song.tracks[0].data.name, 'Old bass');
+  assert.deepEqual(song.warnings, []);
+});
+
+test('finds a revision in the revision list when the page has another one', async () => {
+  const link = 'https://www.songsterr.com/a/wsa/x-tab-s51/r701';
+  const get = fakeGet({
+    'https://www.songsterr.com/api/meta/51/revisions': [
+      { revisionId: 999, image: 'new' },
+      { revisionId: 701, image: 'img701' }
+    ],
+    'https://www.songsterr.com/api/meta/51': { songId: 51, revisionId: 999, image: 'new', title: 'Listed', tracks: [{ partId: 0 }] },
+    [`${CDN}/51/701/img701/0.json`]: track('From list')
+  });
+  const song = await fetchSongsterrSong(link, { get });
+  assert.equal(song.revisionId, 701);
+  assert.equal(song.title, 'Listed');
+  assert.equal(song.tracks[0].data.name, 'From list');
+});
+
+test('falls back to the latest version when the linked revision is gone', async () => {
+  const get = fakeGet({
+    'https://www.songsterr.com/api/meta/52': { songId: 52, revisionId: 999, image: 'new', title: 'Now', tracks: [{ partId: 0 }] },
+    [`${CDN}/52/999/new/0.json`]: track('Latest')
+  });
+  const song = await fetchSongsterrSong('https://www.songsterr.com/a/wsa/x-tab-s52/r1', { get });
+  assert.equal(song.revisionId, 999);
+  assert.match(song.warnings[0], /latest version/);
+});

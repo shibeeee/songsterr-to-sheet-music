@@ -15,7 +15,7 @@ const BUNDLE = 'tab2sheet-bundle';
 // bookmark, so it can't reference anything outside its own body.
 /* eslint-disable */
 function bookmarkletMain(app) {
-  var m = location.pathname.match(/-s(\d+)(?:t\d+)?\/?$/);
+  var m = location.pathname.match(/[-\/]s(\d+)(?:t\d+)?(?:\/r\d+(?:t\d+)?)?\/?$/);
   if (location.hostname.indexOf('songsterr.com') < 0 || !m) {
     alert('Tab to Sheet: open a song tab on songsterr.com, then click this bookmark.');
     return;
