@@ -69,6 +69,7 @@ export function songsterrToScore(alphaTab, bundle) {
   buildMasterBars(m, score, tracks, measureCount);
 
   let nextChannel = 0;
+  const panCounts = new Map(); // how many tracks of each family so far, for stereo spread
   tracks.forEach((entry, trackIndex) => {
     const isDrums = isDrumTrack(entry);
     let channel = PERCUSSION_CHANNEL;
@@ -76,7 +77,12 @@ export function songsterrToScore(alphaTab, bundle) {
       channel = nextChannel === PERCUSSION_CHANNEL ? ++nextChannel : nextChannel;
       nextChannel = (channel + 1) % 16;
     }
-    buildTrack(m, score, entry, { isDrums, channel, measureCount, trackIndex, warnings });
+    const program = entry.meta.instrumentId ?? entry.data.instrumentId ?? 25;
+    const family = isDrums ? 'drums' : instrumentFamily(program);
+    const nth = panCounts.get(family) || 0;
+    panCounts.set(family, nth + 1);
+    const mix = defaultMix(family, nth, entry.data.volume, entry.data.balance);
+    buildTrack(m, score, entry, { isDrums, channel, measureCount, trackIndex, warnings, mix });
   });
 
   score.finish(new alphaTab.Settings());
@@ -91,6 +97,51 @@ export function normalizeTracks(bundle) {
   return (bundle.tracks || [])
     .map((t) => (t && t.data ? { meta: t.meta || {}, data: t.data } : { meta: {}, data: t }))
     .filter((t) => t.data && Array.isArray(t.data.measures));
+}
+
+/** General MIDI program number to a broad instrument family. */
+export function instrumentFamily(program) {
+  if (program >= 24 && program <= 31) return program >= 29 ? 'drive-guitar' : 'guitar';
+  if (program >= 32 && program <= 39) return 'bass';
+  if (program <= 7) return 'keys';
+  if (program >= 16 && program <= 23) return 'keys';
+  if (program >= 88 && program <= 95) return 'pad';
+  if (program >= 40 && program <= 55) return 'strings';
+  if ((program >= 56 && program <= 87) || (program >= 104 && program <= 111)) return 'lead';
+  return 'other';
+}
+
+// Volume (0-16) and stereo position (0 = left, 8 = centre, 16 = right) per
+// family. Songsterr sends the same full-volume, centred values for every
+// track, so these give a balanced band: drums and bass in the middle,
+// rhythm instruments spread left and right, distorted guitars a touch lower.
+const MIX = {
+  drums: { volume: 12, pans: [8] },
+  bass: { volume: 14, pans: [8] },
+  guitar: { volume: 13, pans: [6, 10, 5, 11, 7, 9] },
+  'drive-guitar': { volume: 11, pans: [5, 11, 6, 10, 7, 9] },
+  keys: { volume: 11, pans: [9, 7, 10, 6] },
+  pad: { volume: 9, pans: [7, 9] },
+  strings: { volume: 10, pans: [10, 6] },
+  lead: { volume: 13, pans: [8, 9, 7] },
+  other: { volume: 11, pans: [8, 9, 7] }
+};
+
+/**
+ * Volume and balance for a track. Songsterr's own values (volume 0-1,
+ * balance -1..1) win when they differ from the defaults it always sends.
+ */
+export function defaultMix(family, nth, songsterrVolume, songsterrBalance) {
+  const base = MIX[family] || MIX.other;
+  let volume = base.volume;
+  let balance = base.pans[nth % base.pans.length];
+  if (typeof songsterrVolume === 'number' && songsterrVolume >= 0 && songsterrVolume < 1) {
+    volume = Math.round(volume * songsterrVolume);
+  }
+  if (typeof songsterrBalance === 'number' && songsterrBalance !== 0 && Math.abs(songsterrBalance) <= 1) {
+    balance = Math.round(8 + songsterrBalance * 8);
+  }
+  return { volume: clamp(volume, 0, 16), balance: clamp(balance, 0, 16) };
 }
 
 function isDrumTrack(entry) {
@@ -194,7 +245,8 @@ function buildTrack(m, score, entry, ctx) {
   track.playbackInfo.program = ctx.isDrums ? 0 : clamp(instrumentId, 0, 127);
   track.playbackInfo.primaryChannel = ctx.channel;
   track.playbackInfo.secondaryChannel = ctx.channel;
-  track.playbackInfo.volume = 15;
+  track.playbackInfo.volume = ctx.mix.volume;
+  track.playbackInfo.balance = ctx.mix.balance;
 
   const tuning = Array.isArray(data.tuning) && data.tuning.length ? data.tuning : meta.tuning;
   let numStrings = 6;

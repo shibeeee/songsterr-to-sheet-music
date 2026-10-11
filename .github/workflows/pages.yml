@@ -54,6 +54,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # The better instrument sounds (24 MB) are downloaded once and cached.
+      - uses: actions/cache@v4
+        with:
+          path: .cache/sounds
+          key: sounds-fluidr3mono-v1
+      - run: npm run fetch-sounds
       - run: npm run build
         env:
           # The freshly deployed relay, or a RELAY_URL repository variable.

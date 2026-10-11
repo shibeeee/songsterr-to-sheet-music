@@ -2,10 +2,22 @@ import * as alphaTab from '../vendor/alphatab/alphaTab.mjs';
 import { songsterrToScore } from './convert.js';
 import { isSongsterrLink, parseSongsterrUrl } from './songsterr.js';
 import { loadSong, search } from './sources.js';
-import { prefs, recentSongs, rememberSong, forgetSong } from './storage.js';
+import {
+  prefs,
+  recentSongs,
+  rememberSong,
+  forgetSong,
+  saveEdits,
+  loadEdits,
+  deleteEdits,
+  editedKeys,
+  songView,
+  rememberSongView
+} from './storage.js';
 import { setupBookmarklet, listenForBookmarklet } from './bookmarklet.js';
 import { snapshot, restore, rebuildScore } from './editor.js';
 import { createEditUI } from './edit-ui.js';
+import { SOUND_SETS, fetchSound, isSoundCached } from './sound.js';
 import { optimizeFingering, convertToFourStringBass, canConvertToFourString, fourStringBlocker } from './fingering.js';
 
 const $ = (id) => document.getElementById(id);
@@ -29,7 +41,13 @@ const defaults = {
   speed: 100,
   metronome: false,
   countIn: false,
-  loop: false
+  loop: false,
+  sound: 'better', // instrument sounds: 'better' (24 MB) or 'small' (1.3 MB)
+  panelHidden: false, // desktop: options panel collapsed
+  maxFret: 24, // frets on the player's instrument (for the optimizer)
+  tipDismissed: false,
+  onlyShown: false, // mute tracks that aren't shown
+  volume: 90
 };
 const options = { ...defaults, ...prefs.get('options', {}) };
 const saveOptions = () => prefs.set('options', options);
@@ -49,6 +67,9 @@ const state = {
   redo: [],
   original: null, // snapshot taken when the song was opened
   dirty: false,
+  key: null, // identifies the song for saved edits and remembered views
+  saveTimer: 0,
+  saveFailed: false,
   toolTrack: null // track picked in the Fingering panel (null = choose automatically)
 };
 const UNDO_LIMIT = 60;
@@ -63,7 +84,8 @@ const api = new alphaTab.AlphaTabApi($('score'), {
   display: { layoutMode: alphaTab.LayoutMode.Page },
   player: {
     playerMode: alphaTab.PlayerMode.EnabledSynthesizer,
-    soundFont: asset('vendor/alphatab/soundfont/sonivox.sf2'),
+    // Sounds are loaded on demand (see ensureSound) so pages open quickly.
+    soundFont: null,
     enableCursor: true,
     enableUserInteraction: true,
     scrollElement: $('stage'),
@@ -164,25 +186,38 @@ function showWarnings(warnings) {
 
 let loadToken = 0;
 
-async function openLink(link) {
+async function openLink(link, { fromHistory = false } = {}) {
   const token = ++loadToken;
-  showView('home');
+  // When a song is already open, keep it on screen while the new one loads.
+  const inViewer = document.body.dataset.view === 'score' && !!state.score;
+  const target = inViewer ? $('viewer-status') : $('status');
+  if (!inViewer) showView('home');
   $('results').hidden = true;
   let parsed;
   try {
     parsed = parseSongsterrUrl(link);
   } catch (err) {
-    setStatus(err.message, 'error');
+    if (inViewer) toast(err.message);
+    else setStatus(err.message, 'error');
     return;
   }
-  setStatus('Fetching the tab...', 'loading');
+  setStatus('Fetching the tab...', 'loading', target);
   try {
-    const song = await loadSong(link, (message) => token === loadToken && setStatus(message, 'loading'));
+    const song = await loadSong(link, (message) => token === loadToken && setStatus(message, 'loading', target));
     if (token !== loadToken) return;
-    showBundle(song, { preferredTrack: parsed.trackIndex ?? song.trackIndex ?? 0, sourceUrl: song.source || link });
+    await showBundle(song, {
+      preferredTrack: parsed.trackIndex ?? song.trackIndex ?? 0,
+      explicitTrack: parsed.trackIndex != null,
+      sourceUrl: song.source || link,
+      pushHistory: !fromHistory
+    });
   } catch (err) {
     if (token !== loadToken) return;
     console.warn(err);
+    if (inViewer) {
+      setStatus(null, 'info', $('viewer-status'));
+      showView('home');
+    }
     if (err.status === 404) {
       setStatus(err.message, 'error');
       return;
@@ -248,17 +283,22 @@ function submitQuery(text) {
   else runSearch(value);
 }
 
-function showBundle(bundle, { preferredTrack = 0, sourceUrl = null } = {}) {
+async function showBundle(bundle, { preferredTrack = 0, explicitTrack = false, sourceUrl = null, key = null, pushHistory = true } = {}) {
   const { score, warnings } = songsterrToScore(alphaTab, bundle);
-  state.bundle = bundle;
-  state.sourceUrl = sourceUrl;
-  showScore(score, [...(bundle.warnings || []), ...warnings], preferredTrack);
-  if (sourceUrl) {
+  const shown = await showScore(score, [...(bundle.warnings || []), ...warnings], {
+    preferredTrack,
+    explicitTrack,
+    bundle,
+    sourceUrl,
+    key: key || sourceUrl
+  });
+  if (shown && sourceUrl) {
     rememberSong({ url: sourceUrl, title: score.title, artist: score.artist });
     const url = new URL(window.location.href);
     url.search = '';
     url.searchParams.set('url', sourceUrl);
-    history.pushState({ view: 'score' }, '', url);
+    if (pushHistory) history.pushState({ view: 'score' }, '', url);
+    else history.replaceState({ view: 'score' }, '', url);
   }
 }
 
@@ -270,11 +310,9 @@ async function loadFile(file) {
     if (name.endsWith('.json')) {
       const bundle = JSON.parse(await file.text());
       if (!bundle.title) bundle.title = file.name.replace(/\.json$/i, '');
-      showBundle(bundle, { preferredTrack: bundle.trackIndex ?? 0 });
+      await showBundle(bundle, { preferredTrack: bundle.trackIndex ?? 0, key: `file:${file.name}:${file.size}` });
       return;
     }
-    state.bundle = null;
-    state.sourceUrl = null;
     let score;
     if (/\.(atex|alphatex|txt)$/.test(name)) {
       score = alphaTab.importer.ScoreLoader.loadAlphaTex(await file.text(), api.settings);
@@ -282,7 +320,7 @@ async function loadFile(file) {
       score = alphaTab.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(await file.arrayBuffer()), api.settings);
     }
     if (!score.title) score.title = file.name.replace(/\.[^.]+$/, '');
-    showScore(score, []);
+    await showScore(score, [], { key: `file:${file.name}:${file.size}` });
   } catch (err) {
     console.error(err);
     showView('home');
@@ -295,24 +333,54 @@ async function loadDemo() {
   setStatus('Loading the example...', 'loading');
   try {
     const res = await fetch(asset('demo/demo-song.json'));
-    showBundle(await res.json());
+    await showBundle(await res.json(), { key: 'demo' });
   } catch (err) {
     setStatus(`Couldn't load the example: ${err.message}`, 'error');
   }
 }
 
-function showScore(score, warnings, preferredTrack = 0) {
-  if (state.dirty && !window.confirm('Open this song and lose the changes you made to the current one?')) return;
+/**
+ * Shows a newly opened song. Restores the user's saved edits and view for it.
+ * @returns {Promise<boolean>} false when the user chose to stay on the current song
+ */
+async function showScore(score, warnings, { preferredTrack = 0, explicitTrack = false, bundle = null, sourceUrl = null, key = null } = {}) {
+  if (state.dirty && state.saveFailed && !window.confirm('Your changes to this song could not be saved in this browser. Open the new song anyway?')) {
+    return false;
+  }
+  await flushSave();
   api.stop();
   editUI.reset();
+
+  const original = score;
+  const saved = key ? await loadEdits(key) : null;
+  let restored = null;
+  if (saved) {
+    try {
+      score = alphaTab.model.JsonConverter.jsonToScore(saved.json, api.settings);
+      restored = saved;
+    } catch (err) {
+      console.warn('Saved edits could not be read; showing the original', err);
+    }
+  }
+
+  state.bundle = bundle;
+  state.sourceUrl = sourceUrl;
+  state.key = key;
   state.score = score;
   state.undo = [];
   state.redo = [];
-  state.dirty = false;
-  state.original = snapshot(alphaTab, score);
+  state.dirty = !!restored;
+  state.saveFailed = false;
+  state.original = snapshot(alphaTab, original);
   state.toolTrack = null;
-  state.range = { from: 1, to: 0 };
-  state.visible = [score.tracks[preferredTrack] ? preferredTrack : 0];
+
+  // The song's remembered view: which tracks were shown and which bars.
+  const view = key ? songView(key) : null;
+  const valid = (list) => Array.isArray(list) && list.length && list.every((i) => Number.isInteger(i) && score.tracks[i]);
+  if (view && valid(view.visible) && !explicitTrack) state.visible = [...view.visible];
+  else state.visible = [score.tracks[preferredTrack] ? preferredTrack : 0];
+  state.range = view && view.range && !explicitTrack ? { from: view.range.from || 1, to: view.range.to || 0 } : { from: 1, to: 0 };
+  showEditedBanner(restored);
   state.muted.clear();
   state.soloed.clear();
   state.endTime = 0;
@@ -326,8 +394,71 @@ function showScore(score, warnings, preferredTrack = 0) {
   showWarnings(warnings);
   updateTransportTime(0, 0);
   showView('score');
+  $('play-btn').disabled = false;
+  $('tip').hidden = options.tipDismissed;
+  preloadStoredSound();
   state.scrollToTop = true;
   render();
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Saved edits
+// ---------------------------------------------------------------------------
+
+const SAVE_DELAY_MS = 700;
+
+function scheduleSave() {
+  clearTimeout(state.saveTimer);
+  state.saveTimer = setTimeout(() => flushSave(), SAVE_DELAY_MS);
+}
+
+/** Writes (or clears) the saved edits for the current song now. */
+async function flushSave() {
+  if (!state.saveTimer) return;
+  clearTimeout(state.saveTimer);
+  state.saveTimer = 0;
+  if (!state.key || !state.score) return;
+  try {
+    if (state.dirty) {
+      const json = withCleanScore(() => alphaTab.model.JsonConverter.scoreToJson(state.score));
+      await saveEdits({
+        key: state.key,
+        json,
+        title: state.score.title,
+        artist: state.score.artist,
+        url: state.sourceUrl,
+        savedAt: Date.now()
+      });
+    } else {
+      await deleteEdits(state.key);
+    }
+    state.saveFailed = false;
+  } catch (err) {
+    console.warn('Saving edits failed', err);
+    if (!state.saveFailed) toast("Your changes couldn't be saved in this browser. Download Guitar Pro to keep them.");
+    state.saveFailed = true;
+  }
+}
+
+function rememberView() {
+  if (!state.key || !state.score) return;
+  rememberSongView(state.key, { visible: [...state.visible], range: { ...state.range } });
+}
+
+function timeAgo(time) {
+  const minutes = Math.round((Date.now() - time) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  return `on ${new Date(time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
+
+function showEditedBanner(saved) {
+  const banner = $('edited-banner');
+  banner.hidden = !saved;
+  if (saved) banner.querySelector('span').textContent = `This is your edited version, saved ${timeAgo(saved.savedAt)}.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -390,6 +521,7 @@ function buildTrackList() {
       }
       state.visible = box.checked ? [...state.visible, index] : state.visible.filter((i) => i !== index);
       render();
+      rememberView();
       editUI.afterScoreChange();
     });
     const names = document.createElement('span');
@@ -522,9 +654,19 @@ function render() {
   applySettings();
   api.updateSettings();
   api.renderScore(state.score, [...state.visible].sort((a, b) => a - b));
+  applyTrackAudio();
+}
+
+/** Mute and solo per track, plus "play only shown tracks". */
+function applyTrackAudio() {
+  if (!state.score) return;
   const tracks = state.score.tracks;
-  if (state.muted.size) api.changeTrackMute([...state.muted].map((i) => tracks[i]).filter(Boolean), true);
-  if (state.soloed.size) api.changeTrackSolo([...state.soloed].map((i) => tracks[i]).filter(Boolean), true);
+  const silent = tracks.filter((t, i) => state.muted.has(i) || (options.onlyShown && !state.visible.includes(i)));
+  const audible = tracks.filter((t) => !silent.includes(t));
+  if (silent.length) api.changeTrackMute(silent, true);
+  if (audible.length) api.changeTrackMute(audible, false);
+  const soloed = [...state.soloed].map((i) => tracks[i]).filter(Boolean);
+  if (soloed.length) api.changeTrackSolo(soloed, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -544,6 +686,7 @@ function setRange(from, to) {
   const a = Math.min(Math.max(1, Math.round(from) || 1), last);
   const b = Math.min(Math.max(a, Math.round(to) || last), last);
   state.range = { from: a, to: b === last ? 0 : b };
+  rememberView();
   syncRange();
   syncTools();
   relayout();
@@ -600,7 +743,7 @@ function runOptimize() {
   const index = Number($('tool-track').value);
   let result = null;
   commitEdit((score, m) => {
-    result = optimizeFingering(m, score, index, toolRange());
+    result = optimizeFingering(m, score, index, { ...toolRange(), maxFret: options.maxFret });
     return editUI.selection() ?? undefined;
   });
   if (!result) return;
@@ -613,7 +756,7 @@ function runOptimize() {
 function runConvert(index = Number($('tool-track').value)) {
   let report = null;
   commitEdit((score, m) => {
-    report = convertToFourStringBass(m, score, index);
+    report = convertToFourStringBass(m, score, index, { maxFret: options.maxFret });
     return editUI.selection() ?? undefined;
   });
   if (!report) return;
@@ -648,10 +791,17 @@ function replaceScore(score, selection) {
   editUI.afterScoreChange(selection);
 }
 
+// Each history entry remembers whether the song differed from the original
+// at that point, so undo/redo/revert always know whether to keep or clear
+// the saved edits.
+function historyEntry() {
+  return { snap: snapshot(alphaTab, state.score), dirty: state.dirty };
+}
+
 function commitEdit(fn, { merge = false } = {}) {
   if (!state.score) return;
   unlabelSections();
-  const before = snapshot(alphaTab, state.score);
+  const before = historyEntry();
   let selection;
   try {
     selection = fn(state.score, alphaTab.model);
@@ -659,7 +809,7 @@ function commitEdit(fn, { merge = false } = {}) {
     console.error(err);
     toast(`That edit didn't work: ${err.message || err}`);
     // The model may be half-changed; go back to the snapshot.
-    replaceScore(restore(alphaTab, before, api.settings));
+    replaceScore(restore(alphaTab, before.snap, api.settings));
     return;
   }
   if (!merge || state.undo.length === 0) {
@@ -669,38 +819,46 @@ function commitEdit(fn, { merge = false } = {}) {
   state.redo = [];
   state.dirty = true;
   replaceScore(rebuildScore(alphaTab, state.score, api.settings), selection);
+  afterHistoryChange();
 }
 
 function undoEdit() {
   if (!state.undo.length) return;
   unlabelSections();
-  state.redo.push(snapshot(alphaTab, state.score));
-  replaceScore(restore(alphaTab, state.undo.pop(), api.settings));
-  state.dirty = state.undo.length > 0;
-  updateSongHead();
-  editUI.refreshPanel();
+  state.redo.push(historyEntry());
+  const entry = state.undo.pop();
+  replaceScore(restore(alphaTab, entry.snap, api.settings));
+  state.dirty = entry.dirty;
+  afterHistoryChange();
 }
 
 function redoEdit() {
   if (!state.redo.length) return;
   unlabelSections();
-  state.undo.push(snapshot(alphaTab, state.score));
-  replaceScore(restore(alphaTab, state.redo.pop(), api.settings));
-  state.dirty = true;
-  updateSongHead();
-  editUI.refreshPanel();
+  state.undo.push(historyEntry());
+  const entry = state.redo.pop();
+  replaceScore(restore(alphaTab, entry.snap, api.settings));
+  state.dirty = entry.dirty;
+  afterHistoryChange();
 }
 
 function revertEdits() {
   if (!state.original) return;
   unlabelSections();
-  state.undo.push(snapshot(alphaTab, state.score));
+  state.undo.push(historyEntry());
   state.redo = [];
-  // Restore from a copy so the original stays reusable.
+  // Restore from a copy so the original snapshot stays reusable.
   replaceScore(restore(alphaTab, snapshot(alphaTab, restore(alphaTab, state.original, api.settings)), api.settings));
   state.dirty = false;
+  afterHistoryChange();
+  toast('Back to the original song', { label: 'Undo', run: undoEdit });
+}
+
+function afterHistoryChange() {
+  if (!state.dirty) showEditedBanner(null);
   updateSongHead();
   editUI.refreshPanel();
+  scheduleSave();
 }
 
 const editUI = createEditUI({
@@ -745,6 +903,12 @@ function syncControls() {
   $('loop-btn').setAttribute('aria-pressed', String(options.loop));
   $('metronome-btn').setAttribute('aria-pressed', String(options.metronome));
   $('countin-btn').setAttribute('aria-pressed', String(options.countIn));
+  const soundInput = document.querySelector(`input[name="sound"][value="${options.sound}"]`);
+  if (soundInput) soundInput.checked = true;
+  $('opt-only-shown').checked = options.onlyShown;
+  $('volume').value = String(options.volume);
+  $('opt-frets').value = String(options.maxFret);
+  $('speed-cycle').textContent = `${options.speed}%`;
 }
 
 function setOption(key, value, how = 'render') {
@@ -848,16 +1012,87 @@ function applyPlayerOptions() {
   api.isLooping = options.loop;
   api.metronomeVolume = options.metronome ? 1 : 0;
   api.countInVolume = options.countIn ? 1 : 0;
+  api.masterVolume = Math.max(0, Math.min(1, options.volume / 100));
 }
 
-api.soundFontLoad.on((e) => {
-  const pct = e.total ? Math.round((e.loaded / e.total) * 100) : 0;
-  $('player-status').textContent = pct < 100 ? `Loading sounds ${pct}%` : '';
-});
+// Sounds ---------------------------------------------------------------------
+// The instrument sounds load the first time someone presses Play (or straight
+// away when this browser already has them stored).
+
+const sound = { loaded: null, loading: null, wantPlay: false };
+
+function setPlayerStatus(text) {
+  $('player-status').textContent = text;
+  $('play-btn').classList.toggle('busy', !!text && /Loading/.test(text));
+}
+
+function ensureSound() {
+  const wanted = options.sound in SOUND_SETS ? options.sound : 'better';
+  if (sound.loaded === wanted) return Promise.resolve();
+  if (sound.loading && sound.loading.set === wanted) return sound.loading.promise;
+  const set = SOUND_SETS[wanted];
+  const promise = (async () => {
+    setPlayerStatus('Loading sounds…');
+    try {
+      const bytes = await fetchSound(asset(set.path), (loaded, total) => {
+        if (total) setPlayerStatus(`Loading sounds ${Math.round((loaded / total) * 100)}%`);
+      });
+      if (wanted !== options.sound) return; // the choice changed while downloading
+      await new Promise((resolve) => {
+        const off = api.soundFontLoaded.on(() => {
+          off?.();
+          resolve();
+        });
+        api.loadSoundFont(bytes, false);
+      });
+      sound.loaded = wanted;
+      setPlayerStatus('');
+    } catch (err) {
+      console.warn('Loading sounds failed', err);
+      if (wanted === 'better') {
+        // The bigger set isn't available here: fall back to the small one.
+        toast("The better sounds couldn't load, so the small set is playing instead");
+        options.sound = 'small';
+        syncControls();
+        sound.loading = null;
+        return ensureSound();
+      }
+      setPlayerStatus('');
+      sound.wantPlay = false;
+      toast(`Playback isn't available: ${err.message || err}`);
+    } finally {
+      if (sound.loading && sound.loading.set === wanted) sound.loading = null;
+    }
+  })();
+  sound.loading = { set: wanted, promise };
+  return promise;
+}
+
+/** Play/pause, loading the sounds first if needed. */
+function togglePlay() {
+  if (!state.score) return;
+  if (sound.loaded === options.sound && api.isReadyForPlayback) {
+    api.playPause();
+    return;
+  }
+  sound.wantPlay = true;
+  ensureSound();
+}
+
+/** Loads the sounds right away when they're already stored in this browser. */
+async function preloadStoredSound() {
+  if (sound.loaded || sound.loading) return;
+  const set = SOUND_SETS[options.sound] || SOUND_SETS.better;
+  if (options.sound === 'small' || (await isSoundCached(asset(set.path)))) ensureSound();
+}
+
 api.playerReady.on(() => {
-  for (const id of ['play-btn', 'stop-btn', 'seek']) $(id).disabled = false;
-  $('player-status').textContent = '';
+  for (const id of ['stop-btn', 'seek']) $(id).disabled = false;
   applyPlayerOptions();
+  if (sound.wantPlay && sound.loaded === options.sound) {
+    sound.wantPlay = false;
+    api.play();
+  }
 });
 api.playerStateChanged.on((e) => {
   const playing = e.state === alphaTab.synth.PlayerState.Playing;
@@ -921,9 +1156,18 @@ function renderRecent() {
       forgetSong(song.url);
       renderRecent();
     });
+    li.dataset.url = song.url;
     li.append(open, remove);
     list.append(li);
   }
+  // Mark songs that have saved edits.
+  editedKeys().then((keys) => {
+    for (const li of list.children) {
+      if (!keys.has(li.dataset.url) || li.querySelector('.edited-tag')) continue;
+      const tag = Object.assign(document.createElement('span'), { className: 'edited-tag', textContent: 'edited' });
+      li.querySelector('.a').after(tag);
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -935,11 +1179,25 @@ function closeSidebar() {
   $('sidebar-toggle').setAttribute('aria-expanded', 'false');
 }
 
+const isNarrow = () => window.matchMedia('(max-width: 900px)').matches;
+
 $('sidebar-toggle').addEventListener('click', () => {
-  const open = !$('sidebar').classList.contains('open');
-  $('sidebar').classList.toggle('open', open);
-  $('sidebar-toggle').setAttribute('aria-expanded', String(open));
+  if (isNarrow()) {
+    const open = !$('sidebar').classList.contains('open');
+    $('sidebar').classList.toggle('open', open);
+    $('sidebar-toggle').setAttribute('aria-expanded', String(open));
+    return;
+  }
+  // Desktop: hide or show the panel to give the music the whole width.
+  setOption('panelHidden', !options.panelHidden, 'none');
+  applyPanelVisibility();
+  requestAnimationFrame(() => api.render());
 });
+
+function applyPanelVisibility() {
+  document.body.classList.toggle('panel-hidden', options.panelHidden);
+  if (!isNarrow()) $('sidebar-toggle').setAttribute('aria-expanded', String(!options.panelHidden));
+}
 $('stage').addEventListener('click', closeSidebar);
 
 // ---------------------------------------------------------------------------
@@ -976,8 +1234,9 @@ $('home-link').addEventListener('click', (e) => {
   history.pushState({ view: 'home' }, '', window.location.pathname);
 });
 window.addEventListener('popstate', () => {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('url') && state.score) showView('score', { rerender: true });
+  const link = new URLSearchParams(window.location.search).get('url');
+  if (link && link !== state.sourceUrl) openLink(link, { fromHistory: true }); // another song: load it
+  else if (link && state.score) showView('score', { rerender: true });
   else showView('home');
 });
 
@@ -1012,9 +1271,16 @@ $('edit-toggle').addEventListener('click', () => {
   editUI.toggle();
 });
 window.addEventListener('beforeunload', (e) => {
-  if (!state.dirty) return;
+  flushSave();
+  if (!state.dirty || !state.saveFailed) return;
   e.preventDefault();
   e.returnValue = '';
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushSave();
+});
+$('edited-original').addEventListener('click', () => {
+  if (window.confirm('Go back to the original song? Your saved changes will be removed (you can still undo).')) revertEdits();
 });
 
 $('print-btn').addEventListener('click', printScore);
@@ -1023,7 +1289,7 @@ for (const button of document.querySelectorAll('[data-export]')) {
 }
 $('copy-link').addEventListener('click', copyLink);
 
-$('play-btn').addEventListener('click', () => api.playPause());
+$('play-btn').addEventListener('click', togglePlay);
 $('stop-btn').addEventListener('click', () => api.stop());
 $('seek').addEventListener('input', (e) => {
   state.seeking = true;
@@ -1044,6 +1310,77 @@ function toggleOption(key) {
   setOption(key, !options[key], 'none');
   applyPlayerOptions();
 }
+for (const input of document.querySelectorAll('input[name="sound"]')) {
+  input.addEventListener('change', () => {
+    setOption('sound', input.value, 'none');
+    // Switch now if sounds were already loaded; otherwise on the next Play.
+    if (sound.loaded) {
+      api.pause();
+      ensureSound();
+    }
+  });
+}
+$('opt-only-shown').addEventListener('change', (e) => {
+  setOption('onlyShown', e.target.checked, 'none');
+  applyTrackAudio();
+});
+$('volume').addEventListener('input', (e) => {
+  options.volume = Number(e.target.value);
+  api.masterVolume = options.volume / 100;
+});
+$('volume').addEventListener('change', saveOptions);
+$('opt-frets').addEventListener('change', (e) => setOption('maxFret', Number(e.target.value), 'none'));
+$('speed-cycle').addEventListener('click', () => {
+  const steps = [100, 75, 50, 125];
+  const next = steps[(steps.indexOf(options.speed) + 1) % steps.length] ?? 100;
+  setOption('speed', next, 'none');
+  api.playbackSpeed = next / 100;
+});
+
+// Pasting a Songsterr link opens it straight away.
+for (const input of [$('home-search-input'), $('top-search-input')]) {
+  input.addEventListener('paste', (e) => {
+    const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+    if (!isSongsterrLink(text.trim())) return;
+    e.preventDefault();
+    input.value = text.trim();
+    submitQuery(input.value);
+    if (input.id === 'top-search-input') input.value = '';
+  });
+}
+
+// Arrow keys move between search results.
+$('home-search-input').addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowDown' || $('results').hidden) return;
+  const first = $('results').querySelector('button');
+  if (first) {
+    e.preventDefault();
+    first.focus();
+  }
+});
+$('results').addEventListener('keydown', (e) => {
+  const buttons = [...$('results').querySelectorAll('button')];
+  const i = buttons.indexOf(document.activeElement);
+  if (i < 0) return;
+  if (e.key === 'ArrowDown' && buttons[i + 1]) buttons[i + 1].focus();
+  else if (e.key === 'ArrowUp') (buttons[i - 1] || $('home-search-input')).focus();
+  else if (e.key === 'Escape') $('home-search-input').focus();
+  else return;
+  e.preventDefault();
+});
+
+// Keyboard shortcuts list.
+function openShortcuts() {
+  const dialog = $('shortcuts-dialog');
+  if (!dialog.open) dialog.showModal();
+}
+$('shortcuts-open').addEventListener('click', openShortcuts);
+
+// One-time tip in the score view.
+$('tip-close').addEventListener('click', () => {
+  $('tip').hidden = true;
+  setOption('tipDismissed', true, 'none');
+});
 $('loop-btn').addEventListener('click', () => toggleOption('loop'));
 $('metronome-btn').addEventListener('click', () => toggleOption('metronome'));
 $('countin-btn').addEventListener('click', () => toggleOption('countIn'));
@@ -1063,7 +1400,15 @@ $('relay-input').value = prefs.get('relay', '');
 document.addEventListener('keydown', (e) => {
   if (document.body.dataset.view !== 'score') return;
   const tag = e.target.tagName;
-  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter'))) return;
+  const typing = tag === 'TEXTAREA' || tag === 'SELECT' || (tag === 'INPUT' && !['checkbox', 'radio', 'range'].includes(e.target.type));
+  if (typing) return;
+  // A control that was last clicked with the mouse shouldn't swallow Space
+  // (it should play); keyboard users pressing a control they tabbed to keep
+  // the normal behaviour.
+  const control = tag === 'BUTTON' || tag === 'INPUT';
+  if (control && (e.key === 'Enter' || (e.key === ' ' && !usingPointer))) return;
+  // Sliders and option buttons use the arrow keys themselves.
+  if (tag === 'INPUT' && e.key.startsWith('Arrow')) return;
   if (editUI.handleKey(e)) {
     e.preventDefault();
     return;
@@ -1075,13 +1420,17 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   switch (e.key) {
+    case '?':
+      openShortcuts();
+      break;
     case 'e':
     case 'E':
       editUI.toggle();
       break;
     case ' ':
       e.preventDefault();
-      if (!$('play-btn').disabled) api.playPause();
+      spaceHandled = true; // stop the focused control reacting on key release
+      togglePlay();
       break;
     case 'Escape':
       api.stop();
@@ -1109,6 +1458,20 @@ document.addEventListener('keydown', (e) => {
       break;
   }
 });
+
+// How the user last interacted: pointer (mouse/touch) or keyboard (Tab).
+let usingPointer = true;
+let spaceHandled = false;
+document.addEventListener('pointerdown', () => (usingPointer = true), true);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') usingPointer = false;
+}, true);
+document.addEventListener('keyup', (e) => {
+  if (e.key === ' ' && spaceHandled) {
+    e.preventDefault();
+    spaceHandled = false;
+  }
+}, true);
 
 // Drag and drop a file anywhere on the page.
 let dragDepth = 0;
@@ -1145,8 +1508,19 @@ function trackFromLink(link) {
   }
 }
 
+// Sidebar sections remember whether they're open.
+const closedPanels = new Set(prefs.get('closedPanels', []));
+for (const panel of document.querySelectorAll('details.panel[data-panel]')) {
+  if (closedPanels.has(panel.dataset.panel)) panel.open = false;
+  panel.addEventListener('toggle', () => {
+    panel.open ? closedPanels.delete(panel.dataset.panel) : closedPanels.add(panel.dataset.panel);
+    prefs.set('closedPanels', [...closedPanels]);
+  });
+}
+
 // Start: ?url=<songsterr link>, ?q=<search>, ?demo
 syncControls();
+applyPanelVisibility();
 showView('home');
 const params = new URLSearchParams(window.location.search);
 if (params.get('url')) {

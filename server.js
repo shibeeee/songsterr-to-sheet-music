@@ -1,6 +1,7 @@
 // Small dependency-free web server:
 //   /                     the app (public/)
 //   /vendor/alphatab/*    alphaTab's browser build, fonts and soundfont
+//   /vendor/sounds/*      the better instrument sounds (npm run fetch-sounds)
 //   /api/songsterr?url=   fetches a song from Songsterr and returns its tracks as JSON
 //   /api/search?q=        searches Songsterr
 //   /api/health           lets the page know a server is available
@@ -13,6 +14,7 @@ import { createServerGetter, fetchSongsterrSong, searchSongsterr, SongsterrError
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const PUBLIC_DIR = join(ROOT, 'public');
 const ALPHATAB_DIR = join(ROOT, 'node_modules', '@coderline', 'alphatab', 'dist');
+const SOUNDS_DIR = join(ROOT, '.cache', 'sounds'); // filled by `npm run fetch-sounds`
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
 
@@ -50,7 +52,7 @@ async function serveFile(res, baseDir, relPath) {
     const info = await stat(target);
     const file = info.isDirectory() ? join(target, 'index.html') : target;
     const body = await readFile(file);
-    const cacheControl = baseDir === ALPHATAB_DIR ? 'public, max-age=86400' : 'no-cache';
+    const cacheControl = baseDir === ALPHATAB_DIR || baseDir === SOUNDS_DIR ? 'public, max-age=86400' : 'no-cache';
     send(res, 200, body, MIME[extname(file).toLowerCase()] || 'application/octet-stream', { 'Cache-Control': cacheControl });
   } catch {
     send(res, 404, 'Not found', 'text/plain');
@@ -92,6 +94,9 @@ export function createAppServer() {
       const q = (url.searchParams.get('q') || '').trim();
       if (!q) return send(res, 400, JSON.stringify({ error: 'Missing ?q=' }));
       return handleApi(res, `search:${q.toLowerCase()}`, () => searchSongsterr(q, { get }));
+    }
+    if (url.pathname.startsWith('/vendor/sounds/')) {
+      return serveFile(res, SOUNDS_DIR, decodeURIComponent(url.pathname.slice('/vendor/sounds/'.length)));
     }
     if (url.pathname.startsWith('/vendor/alphatab/')) {
       return serveFile(res, ALPHATAB_DIR, decodeURIComponent(url.pathname.slice('/vendor/alphatab/'.length)));

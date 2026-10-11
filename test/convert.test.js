@@ -119,3 +119,25 @@ test('exports to Guitar Pro, alphaTex and MIDI', () => {
   new alphaTab.midi.MidiFileGenerator(score, settings, new alphaTab.midi.AlphaSynthMidiFileHandler(midi, true)).generate();
   assert.ok(midi.toBinary().length > 1000);
 });
+
+test('mixes tracks by instrument: drums and bass centred, guitars spread', async () => {
+  const { defaultMix, instrumentFamily } = await import('../public/js/convert.js');
+  assert.equal(instrumentFamily(25), 'guitar');
+  assert.equal(instrumentFamily(30), 'drive-guitar');
+  assert.equal(instrumentFamily(33), 'bass');
+  assert.equal(instrumentFamily(0), 'keys');
+  const g1 = defaultMix('guitar', 0);
+  const g2 = defaultMix('guitar', 1);
+  assert.ok(g1.balance < 8 && g2.balance > 8, 'two guitars go left and right');
+  assert.equal(defaultMix('bass', 0).balance, 8);
+  // Songsterr's real settings win over the defaults.
+  assert.equal(defaultMix('guitar', 0, 0.5).volume, 7);
+  assert.equal(defaultMix('guitar', 0, 1, -1).balance, 0);
+  assert.equal(defaultMix('guitar', 0, 1, 0).balance, g1.balance);
+
+  const { score } = songsterrToScore(alphaTab, demo);
+  const [guitar, bass, drums] = score.tracks.map((t) => t.playbackInfo);
+  assert.equal(bass.balance, 8);
+  assert.equal(drums.primaryChannel, 9);
+  assert.ok(guitar.volume > drums.volume);
+});

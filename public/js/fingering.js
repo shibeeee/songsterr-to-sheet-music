@@ -356,10 +356,10 @@ export function fourStringBlocker(track) {
  * Notes lower than low E move up an octave; notes too high move down one.
  * @returns {{ octaveUp: number, octaveDown: number, dropped: number, changed: number }}
  */
-export function convertToFourStringBass(m, score, trackIndex) {
+export function convertToFourStringBass(m, score, trackIndex, { maxFret = MAX_FRET } = {}) {
   const report = { octaveUp: 0, octaveDown: 0, dropped: 0, changed: 0 };
   const lowest = BASS_4_STANDARD[BASS_4_STANDARD.length - 1];
-  const highest = BASS_4_STANDARD[0] + MAX_FRET;
+  const highest = BASS_4_STANDARD[0] + maxFret;
 
   for (const staff of score.tracks[trackIndex].staves) {
     if (!canConvertToFourString(staff)) continue;
@@ -403,7 +403,7 @@ export function convertToFourStringBass(m, score, trackIndex) {
             }
             for (let s = BASS_4_STANDARD.length; s >= 1; s--) {
               const fret = p - BASS_4_STANDARD[BASS_4_STANDARD.length - s];
-              if (used.has(s) || fret < 0 || fret > MAX_FRET) continue;
+              if (used.has(s) || fret < 0 || fret > maxFret) continue;
               // Prefer the highest string that still has a non-negative fret: lowest fret.
               note.string = s;
               note.fret = fret;
@@ -427,6 +427,6 @@ export function convertToFourStringBass(m, score, trackIndex) {
 
   // Then find comfortable positions for the whole track. Tie, hammer-on and
   // slide links still point at the right notes from before the retune.
-  report.changed = optimizeFingering(m, score, trackIndex).changed;
+  report.changed = optimizeFingering(m, score, trackIndex, { maxFret }).changed;
   return report;
 }

@@ -23,6 +23,16 @@ for (const file of ['sonivox.sf2', 'LICENSE', 'README.md']) {
   await cp(join(ALPHATAB, 'soundfont', file), join(VENDOR, 'soundfont', file));
 }
 
+// The better instrument sounds (see scripts/fetch-sounds.js), if downloaded.
+const SOUNDS = join(ROOT, '.cache', 'sounds');
+const soundFiles = await readdir(SOUNDS).catch(() => []);
+if (soundFiles.includes('FluidR3Mono_GM.sf3')) {
+  await mkdir(join(OUT, 'vendor', 'sounds'), { recursive: true });
+  for (const file of soundFiles) await cp(join(SOUNDS, file), join(OUT, 'vendor', 'sounds', file));
+} else {
+  console.warn('Better sounds not found; run "npm run fetch-sounds" first. The site will use the small set.');
+}
+
 // Tell GitHub Pages not to run Jekyll over the files.
 await writeFile(join(OUT, '.nojekyll'), '');
 

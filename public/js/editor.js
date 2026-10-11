@@ -405,6 +405,51 @@ export function deleteBar(m, score, index) {
   return Math.min(index, score.masterBars.length - 1);
 }
 
+/** Copies one track's bar (all voices) for pasting elsewhere. */
+export function copyBar(m, score, trackIndex, barIndex, staffIndex = 0) {
+  const staff = score.tracks[trackIndex]?.staves[staffIndex];
+  const bar = staff?.bars[barIndex];
+  if (!bar) return null;
+  return {
+    strings: staff.tuning.length,
+    percussion: staff.isPercussion,
+    voices: bar.voices.map((v) => v.beats.map((beat) => cloneBeat(m, beat)))
+  };
+}
+
+/**
+ * Replaces a bar's notes with a copied bar. Notes on strings the target
+ * doesn't have are skipped; the count of skipped notes is returned.
+ */
+export function pasteBar(m, score, trackIndex, barIndex, clip, staffIndex = 0) {
+  const staff = score.tracks[trackIndex]?.staves[staffIndex];
+  const bar = staff?.bars[barIndex];
+  if (!bar || !clip) return 0;
+  let skipped = 0;
+  bar.voices.splice(0, bar.voices.length);
+  for (const beats of clip.voices) {
+    const voice = new m.Voice();
+    for (const source of beats) {
+      const beat = cloneBeat(m, source);
+      for (const note of [...beat.notes]) {
+        const fits = staff.isPercussion === clip.percussion && (staff.isPercussion || note.string <= staff.tuning.length);
+        if (!fits) {
+          beat.removeNote(note);
+          skipped++;
+        }
+      }
+      voice.addBeat(beat);
+    }
+    if (voice.beats.length === 0) {
+      const rest = new m.Beat();
+      rest.duration = m.Duration.Whole;
+      voice.addBeat(rest);
+    }
+    bar.addVoice(voice);
+  }
+  return skipped;
+}
+
 export function setSection(m, score, index, text) {
   const mb = score.masterBars[index];
   if (!mb) return;

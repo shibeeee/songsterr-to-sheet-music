@@ -20,6 +20,7 @@ export function createEditUI(host) {
   let editing = false;
   let sel = null;
   let typed = { text: '', at: 0 };
+  let clipboard = null; // a copied bar
 
   // -------------------------------------------------------------------------
   // Selection
@@ -229,6 +230,24 @@ export function createEditUI(host) {
     if (document.activeElement !== $('edit-track-name')) $('edit-track-name').value = staff.track.name;
   }
 
+  function copyCurrentBar() {
+    clipboard = ed.copyBar(m, host.score(), sel.track, sel.bar, sel.staff ?? 0);
+    $('edit-paste-bar').disabled = !clipboard;
+    host.toast(`Copied bar ${sel.bar + 1}. Select another bar and paste with Ctrl+V.`);
+  }
+
+  function pasteCurrentBar() {
+    if (!clipboard) {
+      host.toast('Copy a bar first (Ctrl+C or "Copy bar")');
+      return;
+    }
+    edit((score, s) => {
+      const skipped = ed.pasteBar(m, score, s.track, s.bar, clipboard, s.staff ?? 0);
+      if (skipped) host.toast(`${skipped} note${skipped === 1 ? '' : 's'} didn't fit this track and were left out`);
+      return { ...s, beat: 0 };
+    });
+  }
+
   function bindButtons() {
     const on = (id, fn) => $(id).addEventListener('click', fn);
 
@@ -289,6 +308,8 @@ export function createEditUI(host) {
     on('edit-insert-bar-after', () => edit((score, s) => ({ ...s, bar: ed.insertBar(m, score, s.bar + 1), beat: 0 })));
     on('edit-duplicate-bar', () => edit((score, s) => ({ ...s, bar: ed.duplicateBar(m, score, s.bar), beat: 0 })));
     on('edit-delete-bar', () => edit((score, s) => ({ ...s, bar: ed.deleteBar(m, score, s.bar), beat: 0 })));
+    on('edit-copy-bar', () => sel && copyCurrentBar());
+    on('edit-paste-bar', () => sel && pasteCurrentBar());
 
     const transpose = (semitones) =>
       edit((score, s) => {
@@ -322,6 +343,14 @@ export function createEditUI(host) {
     }
     if (mod && e.key.toLowerCase() === 'y') {
       host.redo();
+      return true;
+    }
+    if (mod && sel && e.key.toLowerCase() === 'c' && !window.getSelection()?.toString()) {
+      copyCurrentBar();
+      return true;
+    }
+    if (mod && sel && e.key.toLowerCase() === 'v') {
+      pasteCurrentBar();
       return true;
     }
     if (mod || e.altKey) return false;

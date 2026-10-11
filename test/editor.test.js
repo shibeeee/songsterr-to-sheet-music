@@ -162,3 +162,21 @@ test('undo snapshots restore the earlier score', () => {
   const restored = ed.restore(alphaTab, snap, settings);
   assert.equal(ed.beatOf(restored, first).notes[0].fret, 3);
 });
+
+test('copying a bar and pasting it over another', () => {
+  let score = fresh();
+  const clip = ed.copyBar(m, score, 0, 1);
+  const skipped = ed.pasteBar(m, score, 0, 2, clip);
+  assert.equal(skipped, 0);
+  score = rebuild(score);
+  const frets = (bar) => ed.voiceOf(score, { ...first, bar }).beats.map((b) => b.notes.map((n) => `${n.string}:${n.fret}`).join());
+  assert.deepEqual(frets(2), frets(1));
+  // Pasting a 6-string guitar bar onto the 4-string bass keeps only notes that fit.
+  const guitarBar = ed.copyBar(m, score, 0, 3);
+  const dropped = ed.pasteBar(m, score, 1, 3, guitarBar);
+  assert.ok(dropped > 0);
+  score = rebuild(score);
+  for (const beat of ed.voiceOf(score, { ...first, track: 1, bar: 3 }).beats) for (const n of beat.notes) assert.ok(n.string <= 4);
+  // Drums and stringed parts don't mix.
+  assert.ok(ed.pasteBar(m, score, 2, 0, clip) > 0);
+});

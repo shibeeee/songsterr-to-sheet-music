@@ -220,6 +220,10 @@
                 <button type="button" class="chip" id="edit-duplicate-bar">Duplicate</button>
                 <button type="button" class="chip danger" id="edit-delete-bar">Delete bar</button>
               </div>
+              <div class="chip-row">
+                <button type="button" class="chip" id="edit-copy-bar" title="Ctrl+C">Copy bar</button>
+                <button type="button" class="chip" id="edit-paste-bar" title="Ctrl+V" disabled>Paste over this bar</button>
+              </div>
             </div>
 
             <div class="edit-group">
@@ -241,25 +245,49 @@
           <button type="button" class="btn ghost block" id="edit-revert">Undo all changes</button>
         </section>
 
-        <section class="panel">
-          <h2>Tracks</h2>
+        <details class="panel" data-panel="tracks" open>
+          <summary><h2>Tracks</h2></summary>
           <ul id="track-list" class="track-list"></ul>
           <p class="panel-note">Ticked tracks are shown. Use <svg class="icon inline" aria-hidden="true"><use href="#i-volume" /></svg> and <svg class="icon inline" aria-hidden="true"><use href="#i-headphones" /></svg> to mute or solo during playback.</p>
-        </section>
+        </details>
 
-        <section class="panel" id="fingering-panel" hidden>
-          <h2>Fingering</h2>
+        <details class="panel" data-panel="playback" open>
+          <summary><h2>Playback</h2></summary>
+          <div class="field">
+            <span class="field-label">Instrument sounds</span>
+            <div class="segmented" role="radiogroup" aria-label="Instrument sounds">
+              <label><input type="radio" name="sound" value="better" /><span>Better (24 MB)</span></label>
+              <label><input type="radio" name="sound" value="small" /><span>Small (1 MB)</span></label>
+            </div>
+          </div>
+          <div class="switches">
+            <label class="switch"><input type="checkbox" id="opt-only-shown" /><span>Play only the shown tracks</span></label>
+          </div>
+          <p class="panel-note">Sounds download the first time you press play, then stay saved in this browser.</p>
+        </details>
+
+        <details class="panel" data-panel="fingering" id="fingering-panel" hidden open>
+          <summary><h2>Fingering</h2></summary>
           <div class="field">
             <label for="tool-track">Track</label>
             <select id="tool-track"></select>
           </div>
+          <div class="field">
+            <label for="opt-frets">Frets on your instrument</label>
+            <select id="opt-frets">
+              <option value="20">20</option>
+              <option value="21">21</option>
+              <option value="22">22</option>
+              <option value="24">24</option>
+            </select>
+          </div>
           <button type="button" class="btn block tool-btn" id="tool-optimize">Optimize fingering</button>
           <button type="button" class="btn block tool-btn" id="tool-convert" hidden>Convert to 4-string bass</button>
           <p class="panel-note" id="tool-note"></p>
-        </section>
+        </details>
 
-        <section class="panel">
-          <h2>Notation</h2>
+        <details class="panel" data-panel="notation" open>
+          <summary><h2>Notation</h2></summary>
           <div class="segmented" role="radiogroup" aria-label="Notation">
             <label><input type="radio" name="view" value="both" /><span>Notes + Tab</span></label>
             <label><input type="radio" name="view" value="notes" /><span>Notes</span></label>
@@ -272,10 +300,10 @@
             <label class="switch"><input type="checkbox" id="opt-sections" /><span>Section names</span></label>
             <label class="switch"><input type="checkbox" id="opt-tempo" /><span>Tempo marks</span></label>
           </div>
-        </section>
+        </details>
 
-        <section class="panel">
-          <h2>Layout</h2>
+        <details class="panel" data-panel="layout" open>
+          <summary><h2>Layout</h2></summary>
           <div class="segmented" role="radiogroup" aria-label="Layout">
             <label><input type="radio" name="layout" value="page" /><span>Pages</span></label>
             <label><input type="radio" name="layout" value="horizontal" /><span>One line</span></label>
@@ -304,10 +332,10 @@
             <label for="opt-zoom">Size <output id="zoom-value" for="opt-zoom">100%</output></label>
             <input type="range" id="opt-zoom" min="60" max="160" step="10" />
           </div>
-        </section>
+        </details>
 
-        <section class="panel">
-          <h2>Print and export</h2>
+        <details class="panel" data-panel="print-and-export" open>
+          <summary><h2>Print and export</h2></summary>
           <div class="field">
             <label for="opt-paper">Paper</label>
             <select id="opt-paper">
@@ -325,9 +353,9 @@
             <li><button type="button" class="btn ghost block" data-export="json" id="export-json"><svg class="icon" aria-hidden="true"><use href="#i-download" /></svg>Songsterr data <span class="ext">.json</span></button></li>
             <li><button type="button" class="btn ghost block" id="copy-link"><svg class="icon" aria-hidden="true"><use href="#i-link" /></svg>Copy link to this page</button></li>
           </ul>
-        </section>
+        </details>
 
-        <p class="shortcuts">
+        <p class="shortcuts"><button type="button" class="linklike" id="shortcuts-open">All keyboard shortcuts</button><br />
           <kbd>Space</kbd> play or pause · <kbd>Esc</kbd> stop · <kbd>L</kbd> loop · <kbd>+</kbd> <kbd>−</kbd> size · <kbd>P</kbd> print · <kbd>E</kbd> edit
         </p>
       </aside>
@@ -335,6 +363,14 @@
       <div class="stage" id="stage">
         <div id="warnings" class="warnings" hidden></div>
         <div id="viewer-status" class="status floating" role="status" aria-live="polite" hidden></div>
+        <div id="tip" class="tip" hidden>
+          <span><strong>Tip:</strong> click any bar to play from there, or drag across bars to loop them. Press <kbd>E</kbd> to edit and <kbd>?</kbd> for all shortcuts.</span>
+          <button type="button" class="icon-btn small" id="tip-close" aria-label="Dismiss tip"><svg class="icon" aria-hidden="true"><use href="#i-close" /></svg></button>
+        </div>
+        <div id="edited-banner" class="edited-banner" hidden>
+          <span></span>
+          <button type="button" class="linklike" id="edited-original">Go back to the original</button>
+        </div>
         <div id="edit-banner" class="edit-banner" hidden>
           <span><strong>Editing.</strong> Click a note to select it<span class="wide-only">, then change it in the panel on the left</span>.</span>
           <button type="button" class="icon-btn small" id="edit-undo" aria-label="Undo" title="Undo (Ctrl+Z)"><svg class="icon" aria-hidden="true"><use href="#i-undo" /></svg></button>
@@ -366,16 +402,52 @@
           <button type="button" class="icon-btn toggle" id="loop-btn" aria-pressed="false" title="Loop (L). Drag across bars in the score to loop just those."><svg class="icon" aria-hidden="true"><use href="#i-loop" /></svg></button>
           <button type="button" class="icon-btn toggle" id="countin-btn" aria-pressed="false" title="Count in before playing"><svg class="icon" aria-hidden="true"><use href="#i-countin" /></svg></button>
           <button type="button" class="icon-btn toggle" id="metronome-btn" aria-pressed="false" title="Metronome (M)"><svg class="icon" aria-hidden="true"><use href="#i-metronome" /></svg></button>
+          <label class="volume" title="Volume">
+            <svg class="icon" aria-hidden="true"><use href="#i-volume" /></svg>
+            <span class="visually-hidden">Volume</span>
+            <input type="range" id="volume" min="0" max="100" step="5" value="90" />
+          </label>
           <label class="speed" title="Playback speed">
             <span class="visually-hidden">Speed</span>
             <input type="range" id="speed" min="25" max="150" step="5" value="100" />
             <output id="speed-value" for="speed">100%</output>
           </label>
+          <button type="button" class="icon-btn speed-cycle" id="speed-cycle" title="Playback speed (tap to change)">100%</button>
         </div>
         <span id="player-status" class="player-status"></span>
       </div>
     </section>
   </main>
+
+  <dialog id="shortcuts-dialog" class="dialog" aria-labelledby="shortcuts-title">
+    <h2 id="shortcuts-title">Keyboard shortcuts</h2>
+    <div class="shortcut-cols">
+      <dl>
+        <dt><kbd>Space</kbd></dt><dd>Play or pause</dd>
+        <dt><kbd>Esc</kbd></dt><dd>Stop (or stop editing)</dd>
+        <dt><kbd>L</kbd></dt><dd>Loop on or off</dd>
+        <dt><kbd>M</kbd></dt><dd>Metronome on or off</dd>
+        <dt><kbd>+</kbd> <kbd>−</kbd></dt><dd>Bigger or smaller music</dd>
+        <dt><kbd>P</kbd></dt><dd>Print or save as PDF</dd>
+        <dt><kbd>E</kbd></dt><dd>Edit the score</dd>
+        <dt><kbd>Ctrl</kbd> <kbd>Z</kbd></dt><dd>Undo (add <kbd>Shift</kbd> to redo)</dd>
+        <dt><kbd>?</kbd></dt><dd>This list</dd>
+      </dl>
+      <dl>
+        <dt class="dl-head">While editing</dt>
+        <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous or next beat</dd>
+        <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Higher or lower string</dd>
+        <dt><kbd>0</kbd>–<kbd>9</kbd></dt><dd>Type a fret (two digits for 10+)</dd>
+        <dt><kbd>Del</kbd></dt><dd>Remove the note</dd>
+        <dt><kbd>R</kbd></dt><dd>Make a rest</dd>
+        <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Longer or shorter note</dd>
+        <dt><kbd>.</kbd></dt><dd>Dotted on or off</dd>
+        <dt><kbd>Enter</kbd></dt><dd>Add a beat after</dd>
+        <dt><kbd>Ctrl</kbd> <kbd>C</kbd> / <kbd>V</kbd></dt><dd>Copy a bar, paste over a bar</dd>
+      </dl>
+    </div>
+    <form method="dialog"><button class="btn primary">Close</button></form>
+  </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <div id="drop-overlay" class="drop-overlay" hidden><p>Drop the file to open it</p></div>
