@@ -1,6 +1,6 @@
 // Builds a static copy of the app into dist/ for GitHub Pages (or any static
 // host): the public/ folder plus the alphaTab files it needs.
-import { cp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,8 +26,9 @@ for (const file of ['sonivox.sf2', 'LICENSE', 'README.md']) {
 // Tell GitHub Pages not to run Jekyll over the files.
 await writeFile(join(OUT, '.nojekyll'), '');
 
-// Site settings read by the page. RELAY_URL points at an optional relay
-// (see relay/worker.js) that lets the site fetch from Songsterr reliably.
-const relay = (process.env.RELAY_URL || '').trim();
+// Site settings read by the page. The relay (see relay/worker.js) lets the
+// site fetch from Songsterr reliably. RELAY_URL overrides site.config.json.
+const fileConfig = JSON.parse(await readFile(join(ROOT, 'site.config.json'), 'utf8').catch(() => '{}'));
+const relay = (process.env.RELAY_URL || fileConfig.relay || '').trim();
 await writeFile(join(OUT, 'config.json'), JSON.stringify({ relay }, null, 2));
 console.log(`Static site written to ${OUT}`);

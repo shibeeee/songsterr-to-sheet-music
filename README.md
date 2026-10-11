@@ -51,9 +51,9 @@ If none of them answers, the page explains the fallbacks: a **bookmark** you cli
    - `CLOUDFLARE_ACCOUNT_ID` = the account ID
 5. Open **Actions → Deploy website → Run workflow**.
 
-**Or connect the repo in Cloudflare instead:** Workers & Pages → Create → Import a repository, pick this repo, keep the root directory `/` and the deploy command `npx wrangler deploy` (the build command can be left empty). The Worker's name must match `name` in `wrangler.toml`. Then put the Worker's address (from its Overview page) into the `RELAY_URL` variable described below.
+**Or connect the repo in Cloudflare instead:** Workers & Pages → Create → Import a repository, pick this repo, keep the root directory `/` and the deploy command `npx wrangler deploy` (the build command can be left empty). The Worker's name must match `name` in `wrangler.toml`. Then put the Worker's address (from its Overview page) into `site.config.json`.
 
-The workflow deploys the relay using `wrangler.toml`, reads its address, and builds the site to use it first. If you'd rather host the relay somewhere else, put its address in a repository variable called `RELAY_URL` instead. You can also paste a relay address under "If a Songsterr link won't load" on the home page, which only affects your own browser.
+The workflow deploys the relay using `wrangler.toml`, reads its address, and builds the site to use it first. The site's relay address lives in `site.config.json`; a repository variable called `RELAY_URL` overrides it. You can also paste a relay address under "If a Songsterr link won't load" on the home page, which only affects your own browser.
 
 ## Run it yourself
 
