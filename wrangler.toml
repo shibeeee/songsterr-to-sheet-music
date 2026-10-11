@@ -1,0 +1,8 @@
+# Cloudflare Worker settings for the relay (relay/worker.js).
+# Works with Cloudflare's Git integration (root directory "/", deploy
+# command "npx wrangler deploy") and with the GitHub Actions workflow.
+# `name` must match the Worker's name in the Cloudflare dashboard.
+name = "songsterr-to-sheet-music"
+main = "relay/worker.js"
+compatibility_date = "2024-09-23"
+workers_dev = true

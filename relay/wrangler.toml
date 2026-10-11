@@ -1,5 +1,0 @@
-# Cloudflare Worker settings for the relay (see worker.js).
-name = "tab-to-sheet-relay"
-main = "worker.js"
-compatibility_date = "2024-09-23"
-workers_dev = true

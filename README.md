@@ -51,7 +51,9 @@ If none of them answers, the page explains the fallbacks: a **bookmark** you cli
    - `CLOUDFLARE_ACCOUNT_ID` = the account ID
 5. Open **Actions → Deploy website → Run workflow**.
 
-The workflow deploys the relay as `tab-to-sheet-relay`, reads its address, and builds the site to use it first. If you'd rather host the relay somewhere else, put its address in a repository variable called `RELAY_URL` instead. You can also paste a relay address under "If a Songsterr link won't load" on the home page, which only affects your own browser.
+**Or connect the repo in Cloudflare instead:** Workers & Pages → Create → Import a repository, pick this repo, keep the root directory `/` and the deploy command `npx wrangler deploy` (the build command can be left empty). The Worker's name must match `name` in `wrangler.toml`. Then put the Worker's address (from its Overview page) into the `RELAY_URL` variable described below.
+
+The workflow deploys the relay using `wrangler.toml`, reads its address, and builds the site to use it first. If you'd rather host the relay somewhere else, put its address in a repository variable called `RELAY_URL` instead. You can also paste a relay address under "If a Songsterr link won't load" on the home page, which only affects your own browser.
 
 ## Run it yourself
 
@@ -78,7 +80,7 @@ Open <http://localhost:3000>. Set `PORT` to use another port, or `HOST=0.0.0.0` 
 | `public/js/editor.js` | Editing operations (notes, rhythm, bars, song details) and undo snapshots. |
 | `public/js/edit-ui.js` | The edit panel, selection highlight and editing keys. |
 | `server.js` | Optional local server (`npm start`). |
-| `relay/worker.js`, `relay/wrangler.toml` | The relay for the hosted site. |
+| `relay/worker.js`, `wrangler.toml` | The relay for the hosted site and its Cloudflare settings. |
 | `scripts/build-static.js` | Builds the static site into `dist/` (`npm run build`). |
 | `.github/workflows/pages.yml` | Tests, builds and publishes the site on every push. |
 | `public/demo/demo-song.json` | An original practice exercise used for the example and the tests. |

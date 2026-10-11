@@ -36,7 +36,7 @@ jobs:
         if: env.CLOUDFLARE_API_TOKEN != ''
         run: |
           set -o pipefail
-          npx --yes wrangler@4 deploy --config relay/wrangler.toml 2>&1 | tee deploy.log
+          npx --yes wrangler@4 deploy 2>&1 | tee deploy.log
           url=$(grep -oE 'https://[A-Za-z0-9.-]+\.workers\.dev' deploy.log | head -n 1)
           if [ -z "$url" ]; then
             echo "::warning::The relay deployed but its address wasn't found in the output. Set RELAY_URL by hand."
