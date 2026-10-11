@@ -4,6 +4,8 @@ import { isSongsterrLink, parseSongsterrUrl } from './songsterr.js';
 import { loadSong, search } from './sources.js';
 import { prefs, recentSongs, rememberSong, forgetSong } from './storage.js';
 import { setupBookmarklet, listenForBookmarklet } from './bookmarklet.js';
+import { snapshot, restore, rebuildScore } from './editor.js';
+import { createEditUI } from './edit-ui.js';
 
 const $ = (id) => document.getElementById(id);
 // Resolve against the page so the app also works from a sub-path
@@ -40,15 +42,22 @@ const state = {
   soloed: new Set(),
   seeking: false,
   endTime: 0,
-  scrollToTop: false
+  scrollToTop: false,
+  range: { from: 1, to: 0 }, // bars shown; to = 0 means "to the end"
+  undo: [],
+  redo: [],
+  original: null, // snapshot taken when the song was opened
+  dirty: false
 };
+const UNDO_LIMIT = 60;
 
 // ---------------------------------------------------------------------------
 // alphaTab
 // ---------------------------------------------------------------------------
 
 const api = new alphaTab.AlphaTabApi($('score'), {
-  core: { fontDirectory: asset('vendor/alphatab/font/') },
+  // Note bounds let a click land on a single note when editing.
+  core: { fontDirectory: asset('vendor/alphatab/font/'), includeNoteBounds: true },
   display: { layoutMode: alphaTab.LayoutMode.Page },
   player: {
     playerMode: alphaTab.PlayerMode.EnabledSynthesizer,
@@ -87,7 +96,7 @@ function showView(view, { rerender = false } = {}) {
   } else {
     closeSidebar();
     if (state.score) {
-      document.title = `${state.score.title}${state.score.artist ? ` by ${state.score.artist}` : ''} · Tab to Sheet`;
+      updateSongHead();
       // Coming back to a score that was laid out while hidden: redo the layout.
       if (rerender) requestAnimationFrame(() => api.render());
     }
@@ -283,8 +292,15 @@ async function loadDemo() {
 }
 
 function showScore(score, warnings, preferredTrack = 0) {
+  if (state.dirty && !window.confirm('Open this song and lose the changes you made to the current one?')) return;
   api.stop();
+  editUI.reset();
   state.score = score;
+  state.undo = [];
+  state.redo = [];
+  state.dirty = false;
+  state.original = snapshot(alphaTab, score);
+  state.range = { from: 1, to: 0 };
   state.visible = [score.tracks[preferredTrack] ? preferredTrack : 0];
   state.muted.clear();
   state.soloed.clear();
@@ -292,10 +308,9 @@ function showScore(score, warnings, preferredTrack = 0) {
   setStatus(null);
   setStatus(null, 'info', $('viewer-status'));
 
-  $('song-title').textContent = score.title || 'Untitled';
-  $('song-artist').textContent = score.artist || '';
   $('export-json').parentElement.hidden = !state.bundle;
-  updateSongMeta();
+  updateSongHead();
+  syncRange();
   buildTrackList();
   showWarnings(warnings);
   updateTransportTime(0, 0);
@@ -311,6 +326,14 @@ function showScore(score, warnings, preferredTrack = 0) {
 function formatTime(ms) {
   const total = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function updateSongHead() {
+  const score = state.score;
+  $('song-title').textContent = score.title || 'Untitled';
+  $('song-artist').textContent = score.artist || '';
+  document.title = `${score.title || 'Untitled'}${score.artist ? ` by ${score.artist}` : ''}${state.dirty ? ' (edited)' : ''} · Tab to Sheet`;
+  updateSongMeta();
 }
 
 function updateSongMeta() {
@@ -355,6 +378,7 @@ function buildTrackList() {
       }
       state.visible = box.checked ? [...state.visible, index] : state.visible.filter((i) => i !== index);
       render();
+      editUI.afterScoreChange();
     });
     const names = document.createElement('span');
     names.className = 'names';
@@ -364,14 +388,14 @@ function buildTrackList() {
     );
     label.append(box, names);
 
-    const mute = trackToggle('i-volume', 'Mute', () => {
+    const mute = trackToggle(state.muted.has(index) ? 'i-muted' : 'i-volume', 'Mute', state.muted.has(index), () => {
       const on = !state.muted.has(index);
       on ? state.muted.add(index) : state.muted.delete(index);
       mute.querySelector('use').setAttribute('href', on ? '#i-muted' : '#i-volume');
       api.changeTrackMute([track], on);
       return on;
     });
-    const solo = trackToggle('i-headphones', 'Solo', () => {
+    const solo = trackToggle('i-headphones', 'Solo', state.soloed.has(index), () => {
       const on = !state.soloed.has(index);
       on ? state.soloed.add(index) : state.soloed.delete(index);
       api.changeTrackSolo([track], on);
@@ -382,13 +406,13 @@ function buildTrackList() {
   });
 }
 
-function trackToggle(icon, title, onToggle) {
+function trackToggle(icon, title, pressed, onToggle) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'icon-btn small toggle';
   button.title = title;
   button.setAttribute('aria-label', title);
-  button.setAttribute('aria-pressed', 'false');
+  button.setAttribute('aria-pressed', String(pressed));
   button.innerHTML = `<svg class="icon" aria-hidden="true"><use href="#${icon}" /></svg>`;
   button.addEventListener('click', () => button.setAttribute('aria-pressed', String(onToggle())));
   return button;
@@ -453,6 +477,11 @@ function applySettings() {
   s.display.layoutMode = options.layout === 'horizontal' ? alphaTab.LayoutMode.Horizontal : alphaTab.LayoutMode.Page;
   s.display.barsPerRow = Number(options.barsPerRow) || -1;
   s.display.scale = options.zoom / 100;
+  const last = state.score ? state.score.masterBars.length : 1;
+  const from = Math.min(Math.max(1, state.range.from), last);
+  const to = state.range.to ? Math.min(Math.max(from, state.range.to), last) : last;
+  s.display.startBar = from;
+  s.display.barCount = from === 1 && to === last ? -1 : to - from + 1;
   s.notation.rhythmMode =
     options.view === 'tab' && options.rhythm ? alphaTab.TabRhythmMode.ShowWithBars : alphaTab.TabRhythmMode.Hidden;
   s.notation.elements.set(alphaTab.NotationElement.EffectChordNames, options.chords);
@@ -467,7 +496,117 @@ function render() {
   applySettings();
   api.updateSettings();
   api.renderScore(state.score, [...state.visible].sort((a, b) => a - b));
+  const tracks = state.score.tracks;
+  if (state.muted.size) api.changeTrackMute([...state.muted].map((i) => tracks[i]).filter(Boolean), true);
+  if (state.soloed.size) api.changeTrackSolo([...state.soloed].map((i) => tracks[i]).filter(Boolean), true);
 }
+
+// ---------------------------------------------------------------------------
+// Bars shown
+// ---------------------------------------------------------------------------
+
+function syncRange() {
+  const last = state.score ? state.score.masterBars.length : 1;
+  for (const id of ['range-from', 'range-to']) $(id).max = String(last);
+  $('range-from').value = String(Math.min(state.range.from, last));
+  $('range-to').value = String(state.range.to ? Math.min(state.range.to, last) : last);
+  $('range-all').disabled = state.range.from === 1 && !state.range.to;
+}
+
+function setRange(from, to) {
+  const last = state.score.masterBars.length;
+  const a = Math.min(Math.max(1, Math.round(from) || 1), last);
+  const b = Math.min(Math.max(a, Math.round(to) || last), last);
+  state.range = { from: a, to: b === last ? 0 : b };
+  syncRange();
+  relayout();
+}
+
+// ---------------------------------------------------------------------------
+// Editing: history and score replacement
+// ---------------------------------------------------------------------------
+
+function replaceScore(score, selection) {
+  state.score = score;
+  state.visible = state.visible.filter((i) => i < score.tracks.length);
+  if (state.visible.length === 0) state.visible = [0];
+  updateSongHead();
+  buildTrackList();
+  syncRange();
+  render();
+  editUI.afterScoreChange(selection);
+}
+
+function commitEdit(fn, { merge = false } = {}) {
+  if (!state.score) return;
+  unlabelSections();
+  const before = snapshot(alphaTab, state.score);
+  let selection;
+  try {
+    selection = fn(state.score, alphaTab.model);
+  } catch (err) {
+    console.error(err);
+    toast(`That edit didn't work: ${err.message || err}`);
+    // The model may be half-changed; go back to the snapshot.
+    replaceScore(restore(alphaTab, before, api.settings));
+    return;
+  }
+  if (!merge || state.undo.length === 0) {
+    state.undo.push(before);
+    if (state.undo.length > UNDO_LIMIT) state.undo.shift();
+  }
+  state.redo = [];
+  state.dirty = true;
+  replaceScore(rebuildScore(alphaTab, state.score, api.settings), selection);
+}
+
+function undoEdit() {
+  if (!state.undo.length) return;
+  unlabelSections();
+  state.redo.push(snapshot(alphaTab, state.score));
+  replaceScore(restore(alphaTab, state.undo.pop(), api.settings));
+  state.dirty = state.undo.length > 0;
+  updateSongHead();
+  editUI.refreshPanel();
+}
+
+function redoEdit() {
+  if (!state.redo.length) return;
+  unlabelSections();
+  state.undo.push(snapshot(alphaTab, state.score));
+  replaceScore(restore(alphaTab, state.redo.pop(), api.settings));
+  state.dirty = true;
+  updateSongHead();
+  editUI.refreshPanel();
+}
+
+function revertEdits() {
+  if (!state.original) return;
+  unlabelSections();
+  state.undo.push(snapshot(alphaTab, state.score));
+  state.redo = [];
+  // Restore from a copy so the original stays reusable.
+  replaceScore(restore(alphaTab, snapshot(alphaTab, restore(alphaTab, state.original, api.settings)), api.settings));
+  state.dirty = false;
+  updateSongHead();
+  editUI.refreshPanel();
+}
+
+const editUI = createEditUI({
+  alphaTab,
+  api,
+  $,
+  toast: (message) => toast(message),
+  score: () => state.score,
+  visible: () => state.visible,
+  commit: commitEdit,
+  undo: undoEdit,
+  redo: redoEdit,
+  revert: revertEdits,
+  canUndo: () => state.undo.length > 0,
+  canRedo: () => state.redo.length > 0,
+  isDirty: () => state.dirty
+});
 
 function relayout() {
   if (!state.score) return;
@@ -547,6 +686,7 @@ function exportAs(kind) {
           break;
         case 'json':
           if (state.bundle) download(JSON.stringify(state.bundle), `${name}.json`, 'application/json');
+          if (state.dirty) toast('Songsterr data is the original song. Download Guitar Pro to keep your edits.');
           break;
       }
     });
@@ -575,7 +715,8 @@ async function copyLink() {
   if (state.sourceUrl) url.searchParams.set('url', state.sourceUrl);
   try {
     await navigator.clipboard.writeText(url.href);
-    toast(state.sourceUrl ? 'Link copied' : 'Link copied (files you opened yourself are not included)');
+    if (state.dirty) toast('Link copied. It opens the original song; download Guitar Pro to share your edits.');
+    else toast(state.sourceUrl ? 'Link copied' : 'Link copied (files you opened yourself are not included)');
   } catch {
     window.prompt('Copy this link:', url.href);
   }
@@ -745,6 +886,20 @@ $('opt-zoom').addEventListener('input', (e) => ($('zoom-value').textContent = `$
 $('opt-zoom').addEventListener('change', (e) => setOption('zoom', Number(e.target.value), 'layout'));
 $('opt-paper').addEventListener('change', (e) => setOption('paper', e.target.value, 'none'));
 
+$('range-from').addEventListener('change', (e) => setRange(Number(e.target.value), state.range.to || state.score.masterBars.length));
+$('range-to').addEventListener('change', (e) => setRange(state.range.from, Number(e.target.value)));
+$('range-all').addEventListener('click', () => setRange(1, state.score.masterBars.length));
+$('edit-toggle').addEventListener('click', () => {
+  // On phones, close the options drawer so the score can be tapped.
+  closeSidebar();
+  editUI.toggle();
+});
+window.addEventListener('beforeunload', (e) => {
+  if (!state.dirty) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
 $('print-btn').addEventListener('click', printScore);
 for (const button of document.querySelectorAll('[data-export]')) {
   button.addEventListener('click', () => exportAs(button.dataset.export));
@@ -789,10 +944,19 @@ $('relay-form').addEventListener('submit', (e) => {
 $('relay-input').value = prefs.get('relay', '');
 
 document.addEventListener('keydown', (e) => {
-  if (document.body.dataset.view !== 'score' || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (document.body.dataset.view !== 'score') return;
   const tag = e.target.tagName;
-  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || (tag === 'BUTTON' && e.key === ' ')) return;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter'))) return;
+  if (editUI.handleKey(e)) {
+    e.preventDefault();
+    return;
+  }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
   switch (e.key) {
+    case 'e':
+    case 'E':
+      editUI.toggle();
+      break;
     case ' ':
       e.preventDefault();
       if (!$('play-btn').disabled) api.playPause();

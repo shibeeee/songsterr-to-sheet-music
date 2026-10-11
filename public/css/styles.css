@@ -260,6 +260,53 @@ input[type="range"] { accent-color: var(--ink); width: 100%; margin: 0; }
 
 .shortcuts { margin: 24px 0 0; color: var(--ink-3); font-size: 12px; line-height: 2; }
 
+/* Editing */
+.btn.small { height: 30px; padding: 0 10px; font-size: 13px; }
+.edit-toggle { margin-top: 14px; width: 100%; }
+.edit-toggle[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.edit-panel { border-top-color: var(--accent); }
+.edit-where { margin: 0 0 4px; font-weight: 600; font-size: 14px; }
+.edit-group { margin-top: 16px; }
+.edit-group h3 { font-size: 12.5px; font-weight: 600; color: var(--ink-3); margin: 0 0 8px; }
+.edit-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.chip-row:first-of-type { margin-top: 0; }
+.chip {
+  height: 28px; padding: 0 9px; border-radius: 5px; font-size: 13px; cursor: pointer;
+  border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink-2);
+}
+.chip:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
+.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--panel); }
+.chip:disabled { opacity: 0.4; cursor: default; }
+.chip.danger { color: var(--danger); }
+.string-picker { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.string-picker span { min-width: 112px; text-align: center; font-variant-numeric: tabular-nums; }
+.mini-field { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.mini-field.wide { display: flex; margin-top: 6px; }
+.mini-field input, .mini-field select, .range-row input {
+  height: 30px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--panel); font-size: 14px;
+}
+.mini-field input[type="number"], #edit-fret { width: 56px; }
+.mini-field.wide input { flex: 1; min-width: 0; }
+.mini-field select { height: 30px; padding: 0 4px; }
+.edit-keys { margin: 16px 0 10px; color: var(--ink-3); font-size: 12px; line-height: 2; }
+.field-label { color: var(--ink-2); }
+.range-row { display: flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: 13px; }
+.range-row input { width: 64px; }
+
+.edit-banner {
+  position: sticky; top: -28px; z-index: 5; max-width: 1000px; margin: -28px auto 14px;
+  display: flex; align-items: center; gap: 6px; padding: 8px 10px 8px 14px;
+  background: var(--panel); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--radius) var(--radius);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); font-size: 14px; color: var(--ink-2);
+}
+.edit-banner span { margin-right: auto; }
+.edit-banner strong { color: var(--ink); }
+.edit-cursor, .edit-note-box { position: absolute; z-index: 3; pointer-events: none; border-radius: 4px; }
+.edit-cursor { background: rgba(37, 99, 235, 0.07); outline: 1.5px solid rgba(37, 99, 235, 0.55); }
+.edit-note-box { outline: 2px solid #2563eb; background: rgba(37, 99, 235, 0.12); }
+body.editing .at-cursor-beat { opacity: 0.35; }
+
 /* Score */
 .paper-frame { position: relative; max-width: 1000px; margin: 0 auto; }
 .paper { background: #fff; color: #000; box-shadow: var(--shadow-paper); min-height: 60vh; padding: 12px 0 24px; overflow-x: auto; border-radius: 2px; }
@@ -311,6 +358,10 @@ body.horizontal .paper-frame { max-width: none; }
   body[data-view="score"] .options-toggle { display: inline-flex; }
   .stage { padding: 12px 8px 32px; }
 }
+@media (max-width: 900px) {
+  .wide-only { display: none; }
+  .edit-banner { margin-top: -12px; top: -12px; }
+}
 @media (max-width: 640px) {
   .topbar { gap: 8px; padding: 0 10px; }
   .wordmark span { display: none; }
@@ -331,5 +382,5 @@ body.horizontal .paper-frame { max-width: none; }
   .viewer { display: block; height: auto; }
   .stage { padding: 0; overflow: visible; background: #fff; }
   .paper { box-shadow: none; padding: 0; overflow: visible; }
-  .at-cursor-bar, .at-cursor-beat, .at-selection { display: none !important; }
+  .at-cursor-bar, .at-cursor-beat, .at-selection, .edit-cursor, .edit-note-box, .edit-banner { display: none !important; }
 }

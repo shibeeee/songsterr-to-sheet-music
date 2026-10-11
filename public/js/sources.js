@@ -13,6 +13,16 @@ const asset = (path) => new URL(path, document.baseURI).href;
 
 const PUBLIC_RELAYS = [
   { id: 'allorigins', wrap: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
+  // Same service, different endpoint: wraps the page in JSON ({ contents }).
+  {
+    id: 'allorigins-get',
+    wrap: (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+    unwrap: async (res, type) => {
+      const { contents } = await res.json();
+      if (typeof contents !== 'string') throw new Error('empty');
+      return type === 'json' ? JSON.parse(contents) : contents;
+    }
+  },
   { id: 'codetabs', wrap: (u) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}` },
   { id: 'corsproxy', wrap: (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}` }
 ];
@@ -80,7 +90,7 @@ async function browserGet(url, type) {
       continue;
     }
     try {
-      const data = await readBody(res, type);
+      const data = route.unwrap ? await route.unwrap(res, type) : await readBody(res, type);
       if (type === 'text' && /^\s*</.test(data) === false) throw new Error('not html');
       prefs.set('route', route.id);
       return { ok: true, data };

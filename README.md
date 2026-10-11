@@ -15,8 +15,16 @@ Turn any Songsterr tab into printable sheet music: standard notation, tablature,
 - **Download** as Guitar Pro (`.gp`), MIDI (`.mid`), alphaTex (`.atex`) or the raw Songsterr data (`.json`, which reopens later without an internet connection).
 - **Listen along**: play, pause, seek, loop (drag across bars to loop a section), count-in, metronome, speed from 25% to 150%, and per-track mute and solo.
 - **Open your own files**: Guitar Pro 3 to 7, MusicXML, alphaTex or saved Songsterr data. Drag a file onto the page or use **Open file**.
+- **Edit the music**: click a note to change its fret, string, length or technique, add and remove notes, beats and bars, rename sections, change tempo, time signature and repeats, and rename the song or tracks. Full undo and redo; download as Guitar Pro to keep your version.
+- **Show only some bars** (for example bars 9 to 24) on screen and when printing.
 - **Remembers** your recent songs and display settings in your browser.
-- Keyboard shortcuts: <kbd>Space</kbd> play or pause, <kbd>Esc</kbd> stop, <kbd>L</kbd> loop, <kbd>M</kbd> metronome, <kbd>+</kbd>/<kbd>-</kbd> size, <kbd>P</kbd> print.
+- Keyboard shortcuts: <kbd>Space</kbd> play or pause, <kbd>Esc</kbd> stop, <kbd>L</kbd> loop, <kbd>M</kbd> metronome, <kbd>+</kbd>/<kbd>-</kbd> size, <kbd>P</kbd> print, <kbd>E</kbd> edit.
+
+![Editing a note](docs/editing.png)
+
+### Editing keys
+
+While editing: <kbd>←</kbd>/<kbd>→</kbd> move between beats, <kbd>↑</kbd>/<kbd>↓</kbd> change string, <kbd>0</kbd>–<kbd>9</kbd> type a fret (two digits in a row make 10 to 36), <kbd>Delete</kbd> remove the note, <kbd>R</kbd> make a rest, <kbd>[</kbd>/<kbd>]</kbd> longer or shorter, <kbd>.</kbd> dotted, <kbd>Enter</kbd> add a beat after, <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redo, <kbd>Esc</kbd> stop editing.
 - Works on phones, and follows your system's light or dark setting.
 
 Supported techniques include ties, hammer-ons and pull-offs, slides, bends, vibrato, palm mutes, let ring, dead and ghost notes, harmonics, accents, staccato, grace notes, tuplets, strums, pick strokes, dynamics, repeats, alternate endings, and time signature and tempo changes.
@@ -31,15 +39,19 @@ The website is static (GitHub Pages), so your browser does the fetching. It trie
 
 If none of them answers, the page explains the fallbacks: a **bookmark** you click on the Songsterr page, setting up a relay, or running the app yourself. Most of the time you won't need any of them.
 
-### Optional: a relay of your own
+### Your own relay (recommended)
 
-`relay/worker.js` is a small Cloudflare Worker (free plan) that fetches from Songsterr for the site. It only forwards requests to Songsterr's own addresses, so it can't be used as an open proxy. To set it up:
+`relay/worker.js` is a tiny Cloudflare Worker that fetches from Songsterr for the site. It only forwards requests to Songsterr's own addresses, so nobody can use it as an open proxy. Cloudflare's free plan is plenty. The deploy workflow publishes it and connects the site to it automatically once GitHub has two Cloudflare codes:
 
-1. In Cloudflare: **Workers & Pages → Create → Create Worker**, paste `relay/worker.js`, and deploy.
-2. In this GitHub repo: **Settings → Secrets and variables → Actions → Variables**, add `RELAY_URL` with the worker's address (for example `https://tab-relay.yourname.workers.dev`).
-3. Re-run the **Deploy website** workflow. The site will use your relay for everyone.
+1. Sign up at [dash.cloudflare.com](https://dash.cloudflare.com) (free) and open **Workers & Pages** once, so your `workers.dev` address gets created.
+2. Go to **My Profile → API Tokens → Create Token**, choose the **Edit Cloudflare Workers** template, and create the token. Copy it.
+3. Copy your **Account ID** (on the right of the Workers & Pages overview page).
+4. In this GitHub repo, open **Settings → Secrets and variables → Actions → New repository secret** and add:
+   - `CLOUDFLARE_API_TOKEN` = the token
+   - `CLOUDFLARE_ACCOUNT_ID` = the account ID
+5. Open **Actions → Deploy website → Run workflow**.
 
-You can also paste a relay address under "If a Songsterr link won't load" on the home page, which only affects your browser.
+The workflow deploys the relay as `tab-to-sheet-relay`, reads its address, and builds the site to use it first. If you'd rather host the relay somewhere else, put its address in a repository variable called `RELAY_URL` instead. You can also paste a relay address under "If a Songsterr link won't load" on the home page, which only affects your own browser.
 
 ## Run it yourself
 
@@ -63,8 +75,10 @@ Open <http://localhost:3000>. Set `PORT` to use another port, or `HOST=0.0.0.0` 
 | `public/js/sources.js` | How the browser reaches Songsterr (server, direct, relays). |
 | `public/js/bookmarklet.js` | The fallback bookmark. |
 | `public/js/storage.js` | Recent songs and saved settings. |
+| `public/js/editor.js` | Editing operations (notes, rhythm, bars, song details) and undo snapshots. |
+| `public/js/edit-ui.js` | The edit panel, selection highlight and editing keys. |
 | `server.js` | Optional local server (`npm start`). |
-| `relay/worker.js` | Optional relay for the hosted site. |
+| `relay/worker.js`, `relay/wrangler.toml` | The relay for the hosted site. |
 | `scripts/build-static.js` | Builds the static site into `dist/` (`npm run build`). |
 | `.github/workflows/pages.yml` | Tests, builds and publishes the site on every push. |
 | `public/demo/demo-song.json` | An original practice exercise used for the example and the tests. |

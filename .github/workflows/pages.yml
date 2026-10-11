@@ -15,7 +15,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Publishes relay/worker.js to Cloudflare when the repository has a
+  # CLOUDFLARE_API_TOKEN secret (and optionally CLOUDFLARE_ACCOUNT_ID).
+  # Without it this job does nothing and the site uses its other routes.
+  relay:
+    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.CLOUDFLARE_API_TOKEN != ''
+      - uses: actions/setup-node@v4
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        with:
+          node-version: 22
+      - id: deploy
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: |
+          set -o pipefail
+          npx --yes wrangler@4 deploy --config relay/wrangler.toml 2>&1 | tee deploy.log
+          url=$(grep -oE 'https://[A-Za-z0-9.-]+\.workers\.dev' deploy.log | head -n 1)
+          if [ -z "$url" ]; then
+            echo "::warning::The relay deployed but its address wasn't found in the output. Set RELAY_URL by hand."
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: relay
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,9 +56,8 @@ jobs:
       - run: npm test
       - run: npm run build
         env:
-          # Optional: URL of your relay (see relay/worker.js), set under
-          # Settings > Secrets and variables > Actions > Variables.
-          RELAY_URL: ${{ vars.RELAY_URL }}
+          # The freshly deployed relay, or a RELAY_URL repository variable.
+          RELAY_URL: ${{ needs.relay.outputs.url || vars.RELAY_URL }}
       # Needs Settings > Pages > Source set to "GitHub Actions" (one-time).
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

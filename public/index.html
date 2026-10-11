@@ -29,6 +29,11 @@
       <symbol id="i-muted" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" /><path d="m16 9.5 5 5M21 9.5l-5 5" /></symbol>
       <symbol id="i-headphones" viewBox="0 0 24 24"><path d="M4 15v-3a8 8 0 0 1 16 0v3" /><rect x="3.5" y="14" width="4.5" height="6.5" rx="1.5" /><rect x="16" y="14" width="4.5" height="6.5" rx="1.5" /></symbol>
       <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5 8 12l7 7" /></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" /><path d="m13.5 6.5 4 4" /></symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></symbol>
+      <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></symbol>
+      <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6" /></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
     </defs>
   </svg>
 
@@ -100,7 +105,7 @@
               <li>Open the song on songsterr.com<a id="open-on-songsterr" target="_blank" rel="noopener" hidden> (open it now)</a> and click the bookmark.</li>
             </ol>
             <h3>Use your own relay</h3>
-            <p>A relay is a tiny free service that fetches from Songsterr for this page. Instructions are in <a href="https://github.com/shibeeee/songsterr-to-sheet-music/blob/HEAD/relay/worker.js" target="_blank" rel="noopener">relay/worker.js</a>. Paste its address here:</p>
+            <p>A relay is a tiny free service that fetches from Songsterr for this page. The <a href="https://github.com/shibeeee/songsterr-to-sheet-music#your-own-relay-recommended" target="_blank" rel="noopener">setup steps</a> take a few minutes. If you have one, you can paste its address here:</p>
             <form id="relay-form" class="relay-form">
               <label for="relay-input" class="visually-hidden">Relay address</label>
               <input id="relay-input" type="url" placeholder="https://your-relay.workers.dev" spellcheck="false" />
@@ -124,7 +129,117 @@
           <h1 id="song-title"></h1>
           <p id="song-artist"></p>
           <p id="song-meta" class="song-meta"></p>
+          <button type="button" class="btn edit-toggle" id="edit-toggle" aria-pressed="false" title="Edit notes, bars and song details (E)">
+            <svg class="icon" aria-hidden="true"><use href="#i-edit" /></svg><span>Edit score</span>
+          </button>
         </div>
+
+        <section class="panel edit-panel" id="edit-panel" hidden aria-label="Edit">
+          <p id="edit-where" class="edit-where"></p>
+          <div id="edit-controls">
+            <div class="edit-group" id="edit-note-group">
+              <h3>Note</h3>
+              <div class="string-picker">
+                <button type="button" class="icon-btn small" id="edit-string-down" aria-label="Lower string"><svg class="icon" aria-hidden="true"><use href="#i-down" /></svg></button>
+                <span id="edit-string"></span>
+                <button type="button" class="icon-btn small" id="edit-string-up" aria-label="Higher string"><svg class="icon" aria-hidden="true"><use href="#i-up" /></svg></button>
+              </div>
+              <div class="edit-row">
+                <label class="mini-field">Fret <input id="edit-fret" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" /></label>
+                <button type="button" class="btn small" id="edit-remove-note">Remove note</button>
+              </div>
+            </div>
+
+            <div class="edit-group">
+              <h3>Length</h3>
+              <div class="chip-row" role="group" aria-label="Note length">
+                <button type="button" class="chip" data-duration="1" title="Whole">1</button>
+                <button type="button" class="chip" data-duration="2" title="Half">½</button>
+                <button type="button" class="chip" data-duration="4" title="Quarter">¼</button>
+                <button type="button" class="chip" data-duration="8" title="Eighth">⅛</button>
+                <button type="button" class="chip" data-duration="16" title="Sixteenth">16</button>
+                <button type="button" class="chip" data-duration="32" title="Thirty-second">32</button>
+              </div>
+              <div class="chip-row">
+                <button type="button" class="chip" id="edit-dot" aria-pressed="false">Dotted</button>
+                <button type="button" class="chip" id="edit-triplet" aria-pressed="false">Triplet</button>
+                <button type="button" class="chip" id="edit-rest">Make rest</button>
+              </div>
+            </div>
+
+            <div class="edit-group">
+              <h3>Techniques</h3>
+              <div class="chip-row" role="group" aria-label="Techniques">
+                <button type="button" class="chip" data-effect="hammer" aria-pressed="false">H/P</button>
+                <button type="button" class="chip" data-effect="slide" aria-pressed="false">Slide</button>
+                <button type="button" class="chip" data-effect="bend" aria-pressed="false">Bend</button>
+                <button type="button" class="chip" data-effect="vibrato" aria-pressed="false">Vibrato</button>
+                <button type="button" class="chip" data-effect="palmMute" aria-pressed="false">P.M.</button>
+                <button type="button" class="chip" data-effect="letRing" aria-pressed="false">Let ring</button>
+                <button type="button" class="chip" data-effect="harmonic" aria-pressed="false">Harmonic</button>
+                <button type="button" class="chip" data-effect="ghost" aria-pressed="false">Ghost</button>
+                <button type="button" class="chip" data-effect="dead" aria-pressed="false">Dead</button>
+                <button type="button" class="chip" data-effect="accent" aria-pressed="false">Accent</button>
+                <button type="button" class="chip" data-effect="staccato" aria-pressed="false">Staccato</button>
+              </div>
+            </div>
+
+            <div class="edit-group">
+              <h3>Beat</h3>
+              <label class="mini-field wide">Text <input id="edit-text" type="text" placeholder="e.g. let ring, harm." /></label>
+              <div class="chip-row">
+                <button type="button" class="chip" id="edit-insert-beat">Add beat after</button>
+                <button type="button" class="chip" id="edit-delete-beat">Delete beat</button>
+              </div>
+            </div>
+
+            <div class="edit-group">
+              <h3>Bar <span id="edit-bar-number"></span></h3>
+              <label class="mini-field wide">Section <input id="edit-section" type="text" placeholder="e.g. Chorus" /></label>
+              <div class="edit-row">
+                <label class="mini-field">Tempo <input id="edit-tempo" type="number" min="20" max="400" step="1" /></label>
+                <span class="mini-field">Time
+                  <input id="edit-ts-num" type="number" min="1" max="32" aria-label="Beats per bar" />
+                  <span aria-hidden="true">/</span>
+                  <select id="edit-ts-den" aria-label="Beat unit"><option>2</option><option>4</option><option>8</option><option>16</option></select>
+                </span>
+              </div>
+              <div class="edit-row">
+                <button type="button" class="chip" id="edit-repeat-start" aria-pressed="false">Repeat starts</button>
+                <label class="mini-field">Repeat ends, play
+                  <select id="edit-repeat-end"><option value="0">no</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
+                </label>
+              </div>
+              <div class="chip-row" id="edit-transpose-group">
+                <button type="button" class="chip" id="edit-transpose-down">Bar down a fret</button>
+                <button type="button" class="chip" id="edit-transpose-up">Bar up a fret</button>
+              </div>
+              <div class="chip-row">
+                <button type="button" class="chip" id="edit-insert-bar-before">Insert before</button>
+                <button type="button" class="chip" id="edit-insert-bar-after">Insert after</button>
+                <button type="button" class="chip" id="edit-duplicate-bar">Duplicate</button>
+                <button type="button" class="chip danger" id="edit-delete-bar">Delete bar</button>
+              </div>
+            </div>
+
+            <div class="edit-group">
+              <h3>Track</h3>
+              <label class="mini-field wide">Name <input id="edit-track-name" type="text" /></label>
+            </div>
+          </div>
+
+          <div class="edit-group">
+            <h3>Song</h3>
+            <label class="mini-field wide">Title <input id="edit-title" type="text" /></label>
+            <label class="mini-field wide">Artist <input id="edit-artist" type="text" /></label>
+          </div>
+
+          <p class="edit-keys">
+            <kbd>←</kbd> <kbd>→</kbd> move · <kbd>↑</kbd> <kbd>↓</kbd> string · <kbd>0</kbd>–<kbd>9</kbd> fret · <kbd>Del</kbd> remove ·
+            <kbd>R</kbd> rest · <kbd>[</kbd> <kbd>]</kbd> length · <kbd>.</kbd> dot · <kbd>Enter</kbd> add beat · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo
+          </p>
+          <button type="button" class="btn ghost block" id="edit-revert">Undo all changes</button>
+        </section>
 
         <section class="panel">
           <h2>Tracks</h2>
@@ -166,6 +281,15 @@
             </select>
           </div>
           <div class="field">
+            <span class="field-label">Show bars</span>
+            <div class="range-row">
+              <input id="range-from" type="number" min="1" aria-label="First bar" />
+              <span>to</span>
+              <input id="range-to" type="number" min="1" aria-label="Last bar" />
+              <button type="button" class="btn small ghost" id="range-all">All</button>
+            </div>
+          </div>
+          <div class="field">
             <label for="opt-zoom">Size <output id="zoom-value" for="opt-zoom">100%</output></label>
             <input type="range" id="opt-zoom" min="60" max="160" step="10" />
           </div>
@@ -193,14 +317,22 @@
         </section>
 
         <p class="shortcuts">
-          <kbd>Space</kbd> play or pause · <kbd>Esc</kbd> stop · <kbd>L</kbd> loop · <kbd>+</kbd> <kbd>−</kbd> size · <kbd>P</kbd> print
+          <kbd>Space</kbd> play or pause · <kbd>Esc</kbd> stop · <kbd>L</kbd> loop · <kbd>+</kbd> <kbd>−</kbd> size · <kbd>P</kbd> print · <kbd>E</kbd> edit
         </p>
       </aside>
 
       <div class="stage" id="stage">
         <div id="warnings" class="warnings" hidden></div>
         <div id="viewer-status" class="status floating" role="status" aria-live="polite" hidden></div>
+        <div id="edit-banner" class="edit-banner" hidden>
+          <span><strong>Editing.</strong> Click a note to select it<span class="wide-only">, then change it in the panel on the left</span>.</span>
+          <button type="button" class="icon-btn small" id="edit-undo" aria-label="Undo" title="Undo (Ctrl+Z)"><svg class="icon" aria-hidden="true"><use href="#i-undo" /></svg></button>
+          <button type="button" class="icon-btn small" id="edit-redo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><svg class="icon" aria-hidden="true"><use href="#i-redo" /></svg></button>
+          <button type="button" class="btn small primary" id="edit-done">Done</button>
+        </div>
         <div class="paper-frame">
+          <div id="edit-cursor" class="edit-cursor" hidden></div>
+          <div id="edit-note" class="edit-note-box" hidden></div>
           <div id="render-progress" class="render-progress" hidden><span></span></div>
           <div id="score" class="paper"></div>
         </div>
