@@ -9,7 +9,7 @@ Turn any Songsterr tab into printable sheet music: standard notation, tablature,
 ## What it does
 
 - **Paste a Songsterr link or search by name.** If the link ends in `t2` (or another track number), that track opens first.
-- **Notes + Tab, Notes, or Tab**, plus optional rhythm under the tab, rhythm slashes, chord names, section names and tempo marks.
+- **Notes + Tab, Notes, or Tab**, plus optional rhythm under the tab, rhythm slashes, chord names, section names, tempo marks and dynamics (p, mf, f: hidden unless you turn them on, since Songsterr parts often change them every few notes).
 - **Choose tracks.** Show one instrument or several stacked in one score; each track shows its tuning.
 - **Print or save as PDF** on A4 or US Letter, always laid out as pages. Choose how many bars go on each line.
 - **Download** as Guitar Pro (`.gp`), MIDI (`.mid`), alphaTex (`.atex`) or the raw Songsterr data (`.json`, which reopens later without an internet connection).

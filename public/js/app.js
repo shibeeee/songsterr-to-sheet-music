@@ -38,6 +38,7 @@ const defaults = {
   barsPerRow: -1,
   zoom: 100,
   paper: /^en-(US|CA)$/i.test(navigator.language) ? 'letter' : 'a4',
+  dynamics: false, // mf, f... marks; Songsterr parts often change them every few notes
   speed: 100,
   trainer: false, // speed trainer: get faster each time the loop repeats
   trainerStart: 60,
@@ -650,6 +651,7 @@ function applySettings() {
     options.view === 'tab' && options.rhythm ? alphaTab.TabRhythmMode.ShowWithBars : alphaTab.TabRhythmMode.Hidden;
   s.notation.elements.set(alphaTab.NotationElement.EffectChordNames, options.chords);
   s.notation.elements.set(alphaTab.NotationElement.EffectTempo, options.tempo);
+  s.notation.elements.set(alphaTab.NotationElement.EffectDynamics, options.dynamics);
   document.body.classList.toggle('horizontal', options.layout === 'horizontal');
 }
 
@@ -908,6 +910,7 @@ function syncControls() {
   $('opt-chords').checked = options.chords;
   $('opt-sections').checked = options.sections;
   $('opt-tempo').checked = options.tempo;
+  $('opt-dynamics').checked = options.dynamics;
   $('opt-bars').value = String(options.barsPerRow);
   $('opt-bars').disabled = options.layout === 'horizontal';
   $('opt-zoom').value = String(options.zoom);
@@ -1460,6 +1463,7 @@ $('opt-slash').addEventListener('change', (e) => setOption('slash', e.target.che
 $('opt-chords').addEventListener('change', (e) => setOption('chords', e.target.checked, 'layout'));
 $('opt-sections').addEventListener('change', (e) => setOption('sections', e.target.checked));
 $('opt-tempo').addEventListener('change', (e) => setOption('tempo', e.target.checked, 'layout'));
+$('opt-dynamics').addEventListener('change', (e) => setOption('dynamics', e.target.checked, 'layout'));
 $('opt-bars').addEventListener('change', (e) => setOption('barsPerRow', Number(e.target.value), 'layout'));
 $('opt-zoom').addEventListener('input', (e) => ($('zoom-value').textContent = `${e.target.value}%`));
 $('opt-zoom').addEventListener('change', (e) => setOption('zoom', Number(e.target.value), 'layout'));
