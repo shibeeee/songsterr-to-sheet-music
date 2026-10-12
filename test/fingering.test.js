@@ -101,7 +101,7 @@ test('converts a 5-string bass to 4 strings, moving low notes up an octave', () 
   let score = scoreFrom(BASS5, [[[[4, 0]], [[4, 3]], [[4, 5]], [[3, 0]], [[2, 2]], [[0, 5]]]]);
   const before = pitches(score);
   assert.equal(canConvertToFourString(score.tracks[0].staves[0]), true);
-  const report = convertToFourStringBass(m, score, 0);
+  const report = convertToFourStringBass(m, score, 0, { lowNotes: 'note' });
   score = rebuildScore(alphaTab, score, settings);
   const staff = score.tracks[0].staves[0];
   assert.deepEqual(staff.tuning, BASS_4_STANDARD);
@@ -122,7 +122,7 @@ test('renames "5-string" tracks after converting', () => {
 test('converts a 6-string bass, keeping high notes', () => {
   let score = scoreFrom(BASS6, [[[[0, 0]], [[0, 5]], [[5, 0]], [[3, 7]]]]);
   const before = pitches(score);
-  const report = convertToFourStringBass(m, score, 0);
+  const report = convertToFourStringBass(m, score, 0, { lowNotes: 'note' });
   score = rebuildScore(alphaTab, score, settings);
   assert.equal(report.dropped, 0);
   assert.deepEqual(pitches(score), before.map((p) => (p < 28 ? p + 12 : p)));
@@ -136,7 +136,9 @@ test('works on the demo guitar with chords, ties and techniques', () => {
   score = rebuildScore(alphaTab, score, settings);
   assert.deepEqual(pitches(score), before);
   // Drums are left alone.
-  assert.deepEqual(optimizeFingering(m, score, 2), { changed: 0, notes: 0 });
+  const drums = optimizeFingering(m, score, 2);
+  assert.equal(drums.changed, 0);
+  assert.equal(drums.notes, 0);
 });
 
 test('recognises basses by tuning, instrument sound or name, and explains when it cannot convert', async () => {
@@ -211,3 +213,81 @@ function handShifts(score) {
   }
   return Math.min(...layer.values());
 }
+
+test('converting keeps a riff in one octave by moving its whole phrase', () => {
+  // A riff climbing from low B (string 4 on a 5-string) to E and G, a rest, then a separate high phrase.
+  const riff = [[[4, 0]], [[4, 3]], [[3, 0]], [[3, 3]]];
+  const rest = { type: 4, duration: [1, 4], rest: true, notes: [{ rest: true }] };
+  const measures = [
+    { signature: [4, 4], voices: [{ beats: riff.map((notes) => ({ type: 8, duration: [1, 8], notes: notes.map(([string, fret]) => ({ string, fret })) })).concat([rest, { type: 4, duration: [1, 4], notes: [{ string: 1, fret: 5 }] }]) }] }
+  ];
+  let score = songsterrToScore(alphaTab, { title: 'Riff', tracks: [{ data: { tuning: BASS5, measures } }] }).score;
+  const before = pitches(score);
+  const report = convertToFourStringBass(m, score, 0);
+  score = rebuildScore(alphaTab, score, settings);
+  const after = pitches(score);
+  // The riff (B D E G) moves up together, so it still climbs; the later phrase stays.
+  assert.deepEqual(after, [...before.slice(0, 4).map((p) => p + 12), before[4]]);
+  assert.equal(report.phrasesUp, 1);
+  for (let i = 1; i < 4; i++) assert.ok(after[i] > after[i - 1], 'the riff still climbs');
+});
+
+test('a tie keeps its pitch when only part of a phrase moves', () => {
+  let score = scoreFrom(BASS5, [[[[4, 2]], [[4, 2, { tie: true }]]]]);
+  convertToFourStringBass(m, score, 0, { lowNotes: 'note' });
+  score = rebuildScore(alphaTab, score, settings);
+  const [a, b] = pitches(score);
+  assert.equal(a, b);
+});
+
+test('repeated bars get the same fingering', () => {
+  // The same bass line four times, written in different places each time.
+  const line = (frets) => frets.map(([s, f]) => [[s, f]]);
+  const written = [
+    line([[3, 5], [3, 7], [2, 5], [2, 7], [3, 5], [3, 7], [2, 5], [2, 7]]),
+    line([[2, 0], [2, 2], [1, 0], [1, 2], [2, 0], [2, 2], [1, 0], [1, 2]]),
+    line([[3, 5], [2, 2], [2, 5], [1, 2], [3, 5], [2, 2], [2, 5], [1, 2]]),
+    line([[2, 0], [3, 7], [1, 0], [2, 7], [2, 0], [3, 7], [1, 0], [2, 7]])
+  ];
+  let score = scoreFrom(BASS_4_STANDARD, written);
+  const before = pitches(score);
+  optimizeFingering(m, score, 0);
+  score = rebuildScore(alphaTab, score, settings);
+  assert.deepEqual(pitches(score), before);
+  const bars = score.tracks[0].staves[0].bars.map((bar) => bar.voices[0].beats.map((b) => `${b.notes[0].string}:${b.notes[0].fret}`).join(' '));
+  assert.equal(new Set(bars).size, 1, bars.join('\n'));
+});
+
+test('styles: avoid open strings, or stay low with open strings', () => {
+  // Notes that can be open strings or fretted around the 5th fret.
+  const notes = [[4, 0], [4, 2], [3, 0], [3, 2], [2, 0], [2, 2], [1, 0], [1, 3]].map(([s, f]) => [[s, f]]);
+  const opens = (score) => allNotes(score).filter(({ n }) => n.fret === 0).length;
+  let fretted = scoreFrom(GUITAR, [notes]);
+  optimizeFingering(m, fretted, 0, { style: 'fretted' });
+  fretted = rebuildScore(alphaTab, fretted, settings);
+  assert.equal(opens(fretted), 0);
+  let low = scoreFrom(GUITAR, [notes]);
+  optimizeFingering(m, low, 0, { style: 'low' });
+  low = rebuildScore(alphaTab, low, settings);
+  assert.ok(opens(low) >= 3, `open strings: ${opens(low)}`);
+  for (const { n } of allNotes(low)) assert.ok(n.fret <= 5);
+});
+
+test('reports hand shifts before and after', () => {
+  const frets = [3, 5, 7, 8, 10, 12, 14, 15, 17, 15, 14, 12, 10, 8, 7, 5];
+  const score = scoreFrom(GUITAR, [frets.slice(0, 8).map((f) => [[5, f]]), frets.slice(8).map((f) => [[5, f]])]);
+  const result = optimizeFingering(m, score, 0);
+  assert.ok(result.shiftsBefore >= 4, `before ${result.shiftsBefore}`);
+  assert.ok(result.shiftsAfter < result.shiftsBefore, `after ${result.shiftsAfter}`);
+});
+
+test('a fast run that fits under the hand stays in one position', () => {
+  // Sixteenth notes at a fast tempo across two positions' worth of notes.
+  const sixteenth = (frets, string = 4) => frets.map((f) => ({ type: 16, duration: [1, 16], notes: [{ string, fret: f }] }));
+  const measures = [
+    { signature: [4, 4], voices: [{ beats: sixteenth([5, 7, 8, 5, 7, 8, 5, 7, 8, 7, 5, 7, 8, 7, 5, 7]) }] }
+  ];
+  const score = songsterrToScore(alphaTab, { title: 'Fast', tracks: [{ data: { tuning: GUITAR, measures, automations: { tempo: [{ measure: 0, bpm: 180 }] } } }] }).score;
+  const result = optimizeFingering(m, score, 0);
+  assert.equal(result.shiftsAfter, 0);
+});

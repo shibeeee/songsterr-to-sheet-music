@@ -301,7 +301,22 @@
               <option value="24">24</option>
             </select>
           </div>
+          <div class="field">
+            <label for="opt-fingerstyle">Aim for</label>
+            <select id="opt-fingerstyle">
+              <option value="fewest">Fewest hand shifts</option>
+              <option value="low">Low on the neck, with open strings</option>
+              <option value="fretted">No open strings (easier to mute)</option>
+            </select>
+          </div>
           <button type="button" class="btn block tool-btn" id="tool-optimize">Optimize fingering</button>
+          <div class="field" id="lownotes-field" hidden>
+            <label for="opt-lownotes">Notes below low E</label>
+            <select id="opt-lownotes">
+              <option value="phrase">Move the whole riff up an octave</option>
+              <option value="note">Move only those notes up an octave</option>
+            </select>
+          </div>
           <button type="button" class="btn block tool-btn" id="tool-convert" hidden>Convert to 4-string bass</button>
           <p class="panel-note" id="tool-note"></p>
         </details>

@@ -48,7 +48,9 @@ const defaults = {
   loop: false,
   sound: 'better', // instrument sounds: 'better' (32 MB) or 'small' (1.3 MB)
   panelHidden: false, // desktop: options panel collapsed
-  maxFret: 24, // frets on the player's instrument (for the optimizer)
+  maxFret: 24,
+  fingerStyle: 'fewest', // what the fingering optimizer aims for
+  lowNotes: 'phrase', // 4-string conversion: move whole riffs, or only the low notes // frets on the player's instrument (for the optimizer)
   tipDismissed: false,
   onlyShown: false, // mute tracks that aren't shown
   volume: 90
@@ -730,12 +732,13 @@ function updateToolButtons() {
   const hasStrings = track.staves.some((s) => !s.isPercussion && s.tuning.length > 0);
   $('tool-convert').hidden = !hasStrings;
   $('tool-convert').disabled = !!blocker;
+  $('lownotes-field').hidden = !hasStrings || !!blocker;
   $('tool-convert').title = blocker || 'Convert this bass to standard 4-string (E A D G)';
   const last = state.score.masterBars.length;
   const to = state.range.to || last;
   const scope = state.range.from === 1 && to === last ? 'every bar' : `bars ${state.range.from} to ${to} (the bars shown)`;
   $('tool-note').textContent =
-    `Optimizing keeps every note's pitch and moves notes to the positions that need the least hand movement. Works on ${scope}.` +
+    `Keeps every note's pitch and moves notes to where they're easiest to play: one finger per fret, shifting only when there's time, and repeated bars fingered the same way. Works on ${scope}.` +
     (blocker && track.staves.some((s) => s.tuning.length > 0) ? ` ${blocker}` : '');
 }
 
@@ -747,25 +750,33 @@ function runOptimize() {
   const index = Number($('tool-track').value);
   let result = null;
   commitEdit((score, m) => {
-    result = optimizeFingering(m, score, index, { ...toolRange(), maxFret: options.maxFret });
+    result = optimizeFingering(m, score, index, { ...toolRange(), maxFret: options.maxFret, style: options.fingerStyle });
     return editUI.selection() ?? undefined;
   });
   if (!result) return;
   const name = state.score.tracks[index].name;
-  if (result.changed === 0) toast(`${name} already uses the easiest positions`);
-  else toast(`Moved ${result.changed} of ${result.notes} notes in ${name} to easier positions`, { label: 'Undo', run: undoEdit });
+  const shifts = (n) => `${n} hand shift${n === 1 ? '' : 's'}`;
+  if (result.changed === 0) toast(`${name} already uses the easiest positions (${shifts(result.shiftsAfter)})`);
+  else {
+    const change =
+      result.shiftsAfter < result.shiftsBefore
+        ? `Hand shifts: ${result.shiftsBefore} → ${result.shiftsAfter}`
+        : `${shifts(result.shiftsAfter)}, with more comfortable positions`;
+    toast(`Moved ${result.changed} notes in ${name}. ${change}`, { label: 'Undo', run: undoEdit });
+  }
   ensureVisible(index);
 }
 
 function runConvert(index = Number($('tool-track').value)) {
   let report = null;
   commitEdit((score, m) => {
-    report = convertToFourStringBass(m, score, index, { maxFret: options.maxFret });
+    report = convertToFourStringBass(m, score, index, { maxFret: options.maxFret, lowNotes: options.lowNotes, style: options.fingerStyle });
     return editUI.selection() ?? undefined;
   });
   if (!report) return;
   const parts = ['Converted to 4-string bass (E A D G)'];
-  if (report.octaveUp) parts.push(`${report.octaveUp} low note${report.octaveUp === 1 ? '' : 's'} moved up an octave`);
+  if (report.phrasesUp) parts.push(`${report.phrasesUp} riff${report.phrasesUp === 1 ? '' : 's'} moved up an octave to stay in shape`);
+  else if (report.octaveUp) parts.push(`${report.octaveUp} low note${report.octaveUp === 1 ? '' : 's'} moved up an octave`);
   if (report.octaveDown) parts.push(`${report.octaveDown} high note${report.octaveDown === 1 ? '' : 's'} moved down an octave`);
   if (report.dropped) parts.push(`${report.dropped} note${report.dropped === 1 ? '' : 's'} left out (too many at once)`);
   toast(parts.join('. '), { label: 'Undo', run: undoEdit });
@@ -918,6 +929,8 @@ function syncControls() {
   $('opt-only-shown').checked = options.onlyShown;
   $('volume').value = String(options.volume);
   $('opt-frets').value = String(options.maxFret);
+  $('opt-fingerstyle').value = options.fingerStyle;
+  $('opt-lownotes').value = options.lowNotes;
   updateSoundStatus();
 
 }
@@ -1508,6 +1521,8 @@ $('volume').addEventListener('input', (e) => {
 });
 $('volume').addEventListener('change', saveOptions);
 $('opt-frets').addEventListener('change', (e) => setOption('maxFret', Number(e.target.value), 'none'));
+$('opt-fingerstyle').addEventListener('change', (e) => setOption('fingerStyle', e.target.value, 'none'));
+$('opt-lownotes').addEventListener('change', (e) => setOption('lowNotes', e.target.value, 'none'));
 
 // Pasting a Songsterr link opens it straight away.
 for (const input of [$('home-search-input'), $('top-search-input')]) {

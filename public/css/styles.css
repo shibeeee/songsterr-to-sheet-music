@@ -274,9 +274,10 @@ details.panel > summary:hover h2 { color: var(--ink); }
 .switch input:disabled { opacity: 0.4; cursor: default; }
 .switch:has(input:disabled) { color: var(--ink-3); cursor: default; }
 
-.field { margin-top: 12px; display: grid; gap: 6px; font-size: 14px; }
+.field { margin-top: 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; font-size: 14px; }
 .field label { display: flex; justify-content: space-between; color: var(--ink-2); }
 .field output { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.field select { width: 100%; min-width: 0; text-overflow: ellipsis; }
 select { height: 34px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); }
 input[type="range"] { accent-color: var(--ink); width: 100%; margin: 0; }
 
