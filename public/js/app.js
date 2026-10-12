@@ -1242,13 +1242,26 @@ async function prepareSound() {
 
 /** Play/pause. Starts at once whenever any sounds are loaded. */
 let lastToggle = 0;
+let pendingToggle = 0;
 function togglePlay() {
   if (!state.score) return;
-  // A double tap would pause audio before it has started, which the audio
-  // engine doesn't handle; treat taps within a quarter second as one.
-  const now = performance.now();
-  if (now - lastToggle < 250) return;
-  lastToggle = now;
+  // The audio engine can't pause sound that hasn't started yet, so a second
+  // press right after the first waits for a quarter second to pass (and a
+  // third press cancels it again).
+  const wait = 250 - (performance.now() - lastToggle);
+  if (wait > 0) {
+    if (pendingToggle) {
+      clearTimeout(pendingToggle);
+      pendingToggle = 0;
+    } else {
+      pendingToggle = setTimeout(() => {
+        pendingToggle = 0;
+        togglePlay();
+      }, wait);
+    }
+    return;
+  }
+  lastToggle = performance.now();
   if (sound.active && !sound.activating && api.isReadyForPlayback) {
     clearTimeout(sound.swapTimer);
     api.playPause();
