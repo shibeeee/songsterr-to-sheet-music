@@ -1,20 +1,22 @@
 // Instrument sounds for playback.
 //
 // Two sets: the small one that ships with alphaTab (1.3 MB, thin sounding)
-// and FluidR3 Mono (about 24 MB, much fuller). Sounds are only downloaded
-// when someone presses Play, with progress, and kept in the browser's Cache
-// Storage so later visits (and offline use) load them instantly.
+// and GeneralUser GS (32 MB, much fuller). Downloads are kept in the
+// browser's Cache Storage so later visits (and offline use) load instantly.
 
 export const SOUND_SETS = {
-  better: { path: 'vendor/sounds/FluidR3Mono_GM.sf3', label: 'Better', megabytes: 24 },
+  better: { path: 'vendor/sounds/GeneralUser-GS.sf2', label: 'Better', megabytes: 32 },
   small: { path: 'vendor/alphatab/soundfont/sonivox.sf2', label: 'Small', megabytes: 1.3 }
 };
 
-const CACHE_NAME = 'tab2sheet-sounds-v1';
+const CACHE_NAME = 'tab2sheet-sounds-v2';
+const OLD_CACHES = ['tab2sheet-sounds-v1']; // held the previous 24 MB set
 
 async function openCache() {
   try {
-    return 'caches' in window ? await caches.open(CACHE_NAME) : null;
+    if (!('caches' in window)) return null;
+    for (const old of OLD_CACHES) caches.delete(old).catch(() => {});
+    return await caches.open(CACHE_NAME);
   } catch {
     return null; // not available (private mode, insecure context)
   }

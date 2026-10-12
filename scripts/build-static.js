@@ -26,7 +26,7 @@ for (const file of ['sonivox.sf2', 'LICENSE', 'README.md']) {
 // The better instrument sounds (see scripts/fetch-sounds.js), if downloaded.
 const SOUNDS = join(ROOT, '.cache', 'sounds');
 const soundFiles = await readdir(SOUNDS).catch(() => []);
-if (soundFiles.includes('FluidR3Mono_GM.sf3')) {
+if (soundFiles.includes('GeneralUser-GS.sf2')) {
   await mkdir(join(OUT, 'vendor', 'sounds'), { recursive: true });
   for (const file of soundFiles) await cp(join(SOUNDS, file), join(OUT, 'vendor', 'sounds', file));
 } else {

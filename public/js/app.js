@@ -39,10 +39,14 @@ const defaults = {
   zoom: 100,
   paper: /^en-(US|CA)$/i.test(navigator.language) ? 'letter' : 'a4',
   speed: 100,
+  trainer: false, // speed trainer: get faster each time the loop repeats
+  trainerStart: 60,
+  trainerStep: 5,
+  trainerTarget: 100,
   metronome: false,
   countIn: false,
   loop: false,
-  sound: 'better', // instrument sounds: 'better' (24 MB) or 'small' (1.3 MB)
+  sound: 'better', // instrument sounds: 'better' (32 MB) or 'small' (1.3 MB)
   panelHidden: false, // desktop: options panel collapsed
   maxFret: 24, // frets on the player's instrument (for the optimizer)
   tipDismissed: false,
@@ -84,7 +88,7 @@ const api = new alphaTab.AlphaTabApi($('score'), {
   display: { layoutMode: alphaTab.LayoutMode.Page },
   player: {
     playerMode: alphaTab.PlayerMode.EnabledSynthesizer,
-    // Sounds are loaded on demand (see ensureSound) so pages open quickly.
+    // Sounds are loaded separately (see prepareSound) so pages open quickly.
     soundFont: null,
     enableCursor: true,
     enableUserInteraction: true,
@@ -396,7 +400,7 @@ async function showScore(score, warnings, { preferredTrack = 0, explicitTrack = 
   showView('score');
   $('play-btn').disabled = false;
   $('tip').hidden = options.tipDismissed;
-  preloadStoredSound();
+  prepareSound();
   state.scrollToTop = true;
   render();
   return true;
@@ -898,8 +902,14 @@ function syncControls() {
   $('opt-zoom').value = String(options.zoom);
   $('zoom-value').textContent = `${options.zoom}%`;
   $('opt-paper').value = options.paper;
-  $('speed').value = String(options.speed);
-  $('speed-value').textContent = `${options.speed}%`;
+  setSpeedSelect(options.speed);
+  $('opt-countin').checked = options.countIn;
+  $('opt-metronome').checked = options.metronome;
+  $('opt-loop').checked = options.loop;
+  $('opt-trainer').checked = options.trainer;
+  $('trainer-start').value = String(options.trainerStart);
+  $('trainer-step').value = String(options.trainerStep);
+  $('trainer-target').value = String(options.trainerTarget);
   $('loop-btn').setAttribute('aria-pressed', String(options.loop));
   $('metronome-btn').setAttribute('aria-pressed', String(options.metronome));
   $('countin-btn').setAttribute('aria-pressed', String(options.countIn));
@@ -908,7 +918,8 @@ function syncControls() {
   $('opt-only-shown').checked = options.onlyShown;
   $('volume').value = String(options.volume);
   $('opt-frets').value = String(options.maxFret);
-  $('speed-cycle').textContent = `${options.speed}%`;
+  updateSoundStatus();
+
 }
 
 function setOption(key, value, how = 'render') {
@@ -1015,91 +1026,263 @@ function applyPlayerOptions() {
   api.masterVolume = Math.max(0, Math.min(1, options.volume / 100));
 }
 
-// Sounds ---------------------------------------------------------------------
-// The instrument sounds load the first time someone presses Play (or straight
-// away when this browser already has them stored).
+// Speed and the speed trainer -------------------------------------------------
 
-const sound = { loaded: null, loading: null, wantPlay: false };
+const SPEED_STEPS = [...$('speed').options].map((o) => Number(o.value));
+
+/** Shows a speed in the menu, adding it as an option if it isn't one already. */
+function setSpeedSelect(value) {
+  const select = $('speed');
+  if (![...select.options].some((o) => Number(o.value) === value)) {
+    const option = Object.assign(document.createElement('option'), { value: String(value), textContent: `${value}%` });
+    const after = [...select.options].find((o) => Number(o.value) > value);
+    select.insertBefore(option, after || null);
+  }
+  select.value = String(value);
+}
+
+function setSpeed(value) {
+  const speed = Math.max(25, Math.min(150, Math.round(value)));
+  options.speed = speed;
+  saveOptions();
+  setSpeedSelect(speed);
+  api.playbackSpeed = speed / 100;
+  updateTrainerStatus();
+}
+
+function stepSpeed(direction) {
+  const current = options.speed;
+  const next = direction > 0 ? SPEED_STEPS.find((v) => v > current) : [...SPEED_STEPS].reverse().find((v) => v < current);
+  if (next) {
+    setSpeed(next);
+    toast(`Speed ${next}%`);
+  }
+}
+
+function setTrainer(on) {
+  setOption('trainer', on, 'none');
+  if (on) {
+    // The trainer works on a loop, starting from its start speed.
+    if (!options.loop) setOption('loop', true, 'none');
+    applyPlayerOptions();
+    setSpeed(options.trainerStart);
+  }
+  updateTrainerStatus();
+}
+
+function updateTrainerStatus() {
+  const el = $('trainer-status');
+  if (!el) return;
+  if (!options.trainer) {
+    el.textContent = '';
+    return;
+  }
+  el.textContent =
+    options.speed >= options.trainerTarget
+      ? `Reached ${options.trainerTarget}%. Nice work.`
+      : `Now ${options.speed}%. Adds ${options.trainerStep}% each time through, up to ${options.trainerTarget}%.`;
+}
+
+/** Called when a loop starts over: the trainer speeds things up. */
+function onLoopRepeat() {
+  if (!options.trainer || options.speed >= options.trainerTarget) return;
+  const next = Math.min(options.trainerTarget, options.speed + options.trainerStep);
+  setSpeed(next);
+  toast(next >= options.trainerTarget ? `Speed ${next}%: target reached` : `Speed ${next}%`);
+}
+
+// Sounds ---------------------------------------------------------------------
+// Playback has to start the moment Play is pressed. The small set (1.3 MB)
+// loads as soon as a song opens and is ready almost instantly. The better
+// set (32 MB) downloads in the background and is swapped in only while
+// nothing is playing, because loading it into the synthesizer takes about a
+// second and would otherwise interrupt the music.
+
+const sound = {
+  active: null, // set currently in the synthesizer: 'small' | 'better'
+  activating: null, // { set, promise } while a set is being unpacked
+  betterBytes: null, // the downloaded better set, waiting to be swapped in
+  betterState: 'idle', // idle | downloading | ready | failed
+  betterProgress: 0,
+  wantPlay: false,
+  swapTimer: 0
+};
+
+const isPlaying = () => api.playerState === alphaTab.synth.PlayerState.Playing;
+
+/** Save-Data or a slow mobile connection: don't download 32 MB unasked. */
+function slowConnection() {
+  const c = navigator.connection;
+  return !!c && (c.saveData || /(^|-)(2g|3g)$/.test(c.effectiveType || ''));
+}
+
+function whenIdle(fn) {
+  if ('requestIdleCallback' in window) requestIdleCallback(() => fn(), { timeout: 3000 });
+  else setTimeout(fn, 1200);
+}
 
 function setPlayerStatus(text) {
   $('player-status').textContent = text;
-  $('play-btn').classList.toggle('busy', !!text && /Loading/.test(text));
+  $('play-btn').classList.toggle('busy', !!text);
 }
 
-function ensureSound() {
-  const wanted = options.sound in SOUND_SETS ? options.sound : 'better';
-  if (sound.loaded === wanted) return Promise.resolve();
-  if (sound.loading && sound.loading.set === wanted) return sound.loading.promise;
-  const set = SOUND_SETS[wanted];
-  const promise = (async () => {
-    setPlayerStatus('Loading sounds…');
-    try {
-      const bytes = await fetchSound(asset(set.path), (loaded, total) => {
-        if (total) setPlayerStatus(`Loading sounds ${Math.round((loaded / total) * 100)}%`);
-      });
-      if (wanted !== options.sound) return; // the choice changed while downloading
-      await new Promise((resolve) => {
-        const off = api.soundFontLoaded.on(() => {
-          off?.();
-          resolve();
-        });
-        api.loadSoundFont(bytes, false);
-      });
-      sound.loaded = wanted;
-      setPlayerStatus('');
-    } catch (err) {
-      console.warn('Loading sounds failed', err);
-      if (wanted === 'better') {
-        // The bigger set isn't available here: fall back to the small one.
-        toast("The better sounds couldn't load, so the small set is playing instead");
-        options.sound = 'small';
-        syncControls();
-        sound.loading = null;
-        return ensureSound();
-      }
-      setPlayerStatus('');
-      sound.wantPlay = false;
-      toast(`Playback isn't available: ${err.message || err}`);
-    } finally {
-      if (sound.loading && sound.loading.set === wanted) sound.loading = null;
-    }
-  })();
-  sound.loading = { set: wanted, promise };
+function updateSoundStatus() {
+  const el = $('sound-status');
+  if (!el) return;
+  let text;
+  if (options.sound === 'small') text = 'Using the small sounds.';
+  else if (sound.active === 'better') text = 'Using the better sounds.';
+  else if (sound.activating?.set === 'better') text = 'Loading the better sounds…';
+  else if (sound.betterState === 'downloading') text = `Downloading the better sounds (${Math.round(sound.betterProgress * 100)}%). Until then the small sounds play.`;
+  else if (sound.betterState === 'ready') text = 'The better sounds are ready and switch in when playback pauses.';
+  else if (sound.betterState === 'failed') text = "The better sounds couldn't download, so the small sounds are used.";
+  else if (slowConnection()) text = 'On this connection the better sounds download only after you press play.';
+  else text = 'The better sounds download in the background once a song is open.';
+  el.textContent = text;
+}
+
+/** Loads a set into the synthesizer. */
+function activate(set, bytes) {
+  if (sound.activating?.set === set) return sound.activating.promise;
+  const promise = new Promise((resolve) => {
+    const off = api.soundFontLoaded.on(() => {
+      off?.();
+      resolve();
+    });
+    api.loadSoundFont(bytes, false);
+  }).then(() => {
+    sound.active = set;
+    sound.activating = null;
+    if (set === 'better') sound.betterBytes = null; // the synthesizer has its own copy
+    updateSoundStatus();
+    startIfWanted();
+  });
+  sound.activating = { set, promise };
+  updateSoundStatus();
   return promise;
 }
 
-/** Play/pause, loading the sounds first if needed. */
+async function activateSmall() {
+  try {
+    const bytes = await fetchSound(asset(SOUND_SETS.small.path));
+    if (sound.active || sound.activating) return; // something else got there first
+    await activate('small', bytes);
+  } catch (err) {
+    console.warn('Loading sounds failed', err);
+    sound.wantPlay = false;
+    setPlayerStatus('');
+    toast(`Playback isn't available: ${err.message || err}`);
+  }
+}
+
+async function downloadBetter() {
+  if (options.sound !== 'better' || sound.betterState === 'downloading' || sound.betterState === 'ready') return;
+  if (sound.active === 'better') return;
+  sound.betterState = 'downloading';
+  updateSoundStatus();
+  try {
+    sound.betterBytes = await fetchSound(asset(SOUND_SETS.better.path), (loaded, total) => {
+      if (!total) return;
+      sound.betterProgress = loaded / total;
+      updateSoundStatus();
+    });
+    sound.betterState = 'ready';
+  } catch (err) {
+    console.warn('Better sounds unavailable', err);
+    sound.betterState = 'failed';
+  }
+  updateSoundStatus();
+  swapToBetterWhenQuiet();
+}
+
+/** Swaps the better set in, but never while music is playing. */
+function swapToBetterWhenQuiet(delay = 0) {
+  clearTimeout(sound.swapTimer);
+  sound.swapTimer = setTimeout(() => {
+    if (options.sound !== 'better' || sound.betterState !== 'ready' || !sound.betterBytes) return;
+    if (sound.active === 'better' || sound.activating || isPlaying()) return;
+    activate('better', sound.betterBytes);
+  }, delay);
+}
+
+function startIfWanted() {
+  if (!sound.wantPlay || sound.activating || !sound.active || !api.isReadyForPlayback) return;
+  sound.wantPlay = false;
+  setPlayerStatus('');
+  api.play();
+}
+
+/** Called when a song opens: get playback ready before anyone presses Play. */
+async function prepareSound() {
+  if (!sound.active && !sound.activating) {
+    const betterUrl = asset(SOUND_SETS.better.path);
+    if (options.sound === 'better' && (await isSoundCached(betterUrl))) {
+      // Stored from an earlier visit: unpack it now, while the music is being read.
+      await downloadBetter();
+      if (!sound.active && !sound.activating) activateSmall();
+    } else {
+      activateSmall();
+    }
+  }
+  if (options.sound === 'better' && sound.betterState === 'idle' && !slowConnection()) whenIdle(downloadBetter);
+}
+
+/** Play/pause. Starts at once whenever any sounds are loaded. */
+let lastToggle = 0;
 function togglePlay() {
   if (!state.score) return;
-  if (sound.loaded === options.sound && api.isReadyForPlayback) {
+  // A double tap would pause audio before it has started, which the audio
+  // engine doesn't handle; treat taps within a quarter second as one.
+  const now = performance.now();
+  if (now - lastToggle < 250) return;
+  lastToggle = now;
+  if (sound.active && !sound.activating && api.isReadyForPlayback) {
+    clearTimeout(sound.swapTimer);
     api.playPause();
     return;
   }
   sound.wantPlay = true;
-  ensureSound();
+  setPlayerStatus(sound.activating?.set === 'better' ? 'Loading sounds…' : 'Getting sounds ready…');
+  if (!sound.active && !sound.activating) activateSmall();
+  if (options.sound === 'better' && sound.betterState === 'idle') downloadBetter();
 }
 
-/** Loads the sounds right away when they're already stored in this browser. */
-async function preloadStoredSound() {
-  if (sound.loaded || sound.loading) return;
-  const set = SOUND_SETS[options.sound] || SOUND_SETS.better;
-  if (options.sound === 'small' || (await isSoundCached(asset(set.path)))) ensureSound();
+/** The sound choice changed in the Playback panel. */
+function soundChoiceChanged() {
+  updateSoundStatus();
+  if (options.sound === 'small') {
+    if (sound.active === 'better' && !isPlaying()) {
+      sound.active = null;
+      activateSmall();
+    }
+  } else if (sound.betterState === 'ready') {
+    swapToBetterWhenQuiet();
+  } else {
+    downloadBetter();
+  }
 }
 
 api.playerReady.on(() => {
   for (const id of ['stop-btn', 'seek']) $(id).disabled = false;
   applyPlayerOptions();
-  if (sound.wantPlay && sound.loaded === options.sound) {
-    sound.wantPlay = false;
-    api.play();
-  }
+  startIfWanted();
 });
 api.playerStateChanged.on((e) => {
   const playing = e.state === alphaTab.synth.PlayerState.Playing;
+  // Paused or stopped: a good moment to bring in the better sounds (after a
+  // short wait, so a quick pause-and-resume isn't interrupted).
+  if (!playing) swapToBetterWhenQuiet(1500);
   $('play-btn').classList.toggle('playing', playing);
   $('play-btn').setAttribute('aria-label', playing ? 'Pause' : 'Play');
 });
+let lastTick = 0;
+let userSeekAt = 0; // clicks in the music and the seek bar also move the position back
+$('score').addEventListener('pointerdown', () => (userSeekAt = Date.now()), true);
 api.playerPositionChanged.on((e) => {
+  // A loop starting over shows up as the position jumping backwards while playing.
+  const jumpedBack = e.currentTick + 960 < lastTick;
+  if (jumpedBack && options.loop && isPlaying() && Date.now() - userSeekAt > 600) onLoopRepeat();
+  lastTick = e.currentTick;
   if (e.endTime && Math.abs(e.endTime - state.endTime) > 500) {
     state.endTime = e.endTime;
     updateSongMeta();
@@ -1297,27 +1480,22 @@ $('seek').addEventListener('input', (e) => {
 });
 $('seek').addEventListener('change', (e) => {
   state.seeking = false;
+  userSeekAt = Date.now();
   if (state.endTime) api.timePosition = (Number(e.target.value) / 1000) * state.endTime;
 });
-$('speed').addEventListener('input', (e) => {
-  options.speed = Number(e.target.value);
-  $('speed-value').textContent = `${options.speed}%`;
-  api.playbackSpeed = options.speed / 100;
-});
-$('speed').addEventListener('change', saveOptions);
+$('speed').addEventListener('change', (e) => setSpeed(Number(e.target.value)));
 
 function toggleOption(key) {
+  // The trainer needs the loop, so turning the loop off stops the trainer too.
+  if (key === 'loop' && options.loop && options.trainer) options.trainer = false;
   setOption(key, !options[key], 'none');
   applyPlayerOptions();
+  updateTrainerStatus();
 }
 for (const input of document.querySelectorAll('input[name="sound"]')) {
   input.addEventListener('change', () => {
     setOption('sound', input.value, 'none');
-    // Switch now if sounds were already loaded; otherwise on the next Play.
-    if (sound.loaded) {
-      api.pause();
-      ensureSound();
-    }
+    soundChoiceChanged();
   });
 }
 $('opt-only-shown').addEventListener('change', (e) => {
@@ -1330,12 +1508,6 @@ $('volume').addEventListener('input', (e) => {
 });
 $('volume').addEventListener('change', saveOptions);
 $('opt-frets').addEventListener('change', (e) => setOption('maxFret', Number(e.target.value), 'none'));
-$('speed-cycle').addEventListener('click', () => {
-  const steps = [100, 75, 50, 125];
-  const next = steps[(steps.indexOf(options.speed) + 1) % steps.length] ?? 100;
-  setOption('speed', next, 'none');
-  api.playbackSpeed = next / 100;
-});
 
 // Pasting a Songsterr link opens it straight away.
 for (const input of [$('home-search-input'), $('top-search-input')]) {
@@ -1382,6 +1554,37 @@ $('tip-close').addEventListener('click', () => {
   setOption('tipDismissed', true, 'none');
 });
 $('loop-btn').addEventListener('click', () => toggleOption('loop'));
+$('opt-loop').addEventListener('change', (e) => {
+  const on = e.target.checked;
+  if (!on) options.trainer = false; // the trainer needs the loop
+  setOption('loop', on, 'none');
+  applyPlayerOptions();
+  updateTrainerStatus();
+});
+$('opt-countin').addEventListener('change', (e) => {
+  setOption('countIn', e.target.checked, 'none');
+  applyPlayerOptions();
+});
+$('opt-metronome').addEventListener('change', (e) => {
+  setOption('metronome', e.target.checked, 'none');
+  applyPlayerOptions();
+});
+$('clear-range').addEventListener('click', () => {
+  api.playbackRange = null;
+  api.clearPlaybackRangeHighlight?.();
+  toast('The whole song will play and loop again');
+});
+$('opt-trainer').addEventListener('change', (e) => setTrainer(e.target.checked));
+for (const id of ['trainer-start', 'trainer-step', 'trainer-target']) {
+  $(id).addEventListener('change', () => {
+    options.trainerStart = Number($('trainer-start').value);
+    options.trainerStep = Number($('trainer-step').value);
+    options.trainerTarget = Number($('trainer-target').value);
+    saveOptions();
+    if (options.trainer) setSpeed(options.trainerStart);
+    updateTrainerStatus();
+  });
+}
 $('metronome-btn').addEventListener('click', () => toggleOption('metronome'));
 $('countin-btn').addEventListener('click', () => toggleOption('countIn'));
 
@@ -1443,6 +1646,16 @@ document.addEventListener('keydown', (e) => {
     case 'm':
     case 'M':
       toggleOption('metronome');
+      break;
+    case 'c':
+    case 'C':
+      toggleOption('countIn');
+      break;
+    case ',':
+      stepSpeed(-1);
+      break;
+    case '.':
+      stepSpeed(1);
       break;
     case '+':
     case '=':

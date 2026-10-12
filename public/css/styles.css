@@ -140,7 +140,6 @@ body[data-view="score"] .options-toggle { display: inline-flex; }
 body.panel-hidden .viewer { grid-template-columns: 0 1fr; }
 body.panel-hidden .paper-frame, body.panel-hidden .tip, body.panel-hidden .edited-banner, body.panel-hidden .warnings { max-width: 1240px; }
 body.panel-hidden .sidebar { visibility: hidden; padding: 0; border: 0; }
-.speed-cycle { display: none; width: auto; padding: 0 8px; font-size: 13px; font-variant-numeric: tabular-nums; }
 .tip { max-width: 1000px; margin: 0 auto 14px; padding: 6px 6px 6px 12px; border-radius: var(--radius); display: flex; gap: 8px; align-items: center; background: var(--panel); border: 1px solid var(--line); font-size: 13.5px; color: var(--ink-2); }
 .tip span { flex: 1; }
 .dialog { border: 1px solid var(--line); border-radius: 10px; padding: 22px 24px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow-pop); width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; }
@@ -367,16 +366,23 @@ body.horizontal .paper-frame { max-width: none; }
 }
 .transport-buttons, .transport-options { display: flex; align-items: center; gap: 4px; }
 .timeline { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
-.time { font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 13px; min-width: 38px; }
+.time { font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 13px; min-width: 38px; flex: none; }
+#seek { flex: 1; min-width: 0; width: 0; }
 .time:last-child { text-align: right; }
-.speed { display: flex; align-items: center; gap: 8px; margin-left: 6px; }
+.speed { display: flex; align-items: center; gap: 6px; margin-left: 6px; font-size: 13px; color: var(--ink-2); }
+.speed select { height: 30px; font-variant-numeric: tabular-nums; }
+.icon-btn.labeled { width: auto; padding: 0 9px; gap: 6px; display: inline-flex; align-items: center; }
+.btn-label { font-size: 13px; font-weight: 550; }
+@media (max-width: 1250px) { .btn-label, .speed-label { display: none; } .icon-btn.labeled { width: 36px; padding: 0; justify-content: center; } }
+.trainer { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.trainer .panel-note { margin-top: 4px; }
+.trainer-fields { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 8px; }
+#trainer-status:empty { display: none; }
 .volume { display: flex; align-items: center; gap: 6px; margin-left: 6px; color: var(--ink-2); }
 .volume input { width: 70px; }
 .icon-btn.primary.busy { background: color-mix(in srgb, var(--primary) 60%, transparent); }
 .icon-btn.primary.busy .icon { animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
-.speed input { width: 90px; }
-.speed output { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-2); min-width: 38px; }
 .player-status { color: var(--ink-3); font-size: 12px; white-space: nowrap; }
 .player-status:empty { display: none; }
 
@@ -390,7 +396,7 @@ body.horizontal .paper-frame { max-width: none; }
 
 /* Narrow screens ----------------------------------------------------------- */
 @media (max-width: 900px) {
-  .viewer, body.panel-hidden .viewer { grid-template-columns: 1fr; grid-template-areas: "stage" "transport"; }
+  .viewer, body.panel-hidden .viewer { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stage" "transport"; }
   body.panel-hidden .sidebar { visibility: visible; padding: 20px 18px 28px; }
   .sidebar {
     position: fixed; z-index: 40; top: var(--topbar-h); bottom: var(--transport-h); left: 0;
@@ -412,9 +418,15 @@ body.horizontal .paper-frame { max-width: none; }
   .home-inner { padding-top: 40px; }
   .home h1 { font-size: 30px; }
   .transport { gap: 8px; padding: 0 8px; }
-  .speed input, .speed output, #countin-btn, .volume { display: none; }
-  .speed-cycle { display: inline-grid; }
+  #countin-btn, .volume { display: none; }
   .time { min-width: 0; }
+  .timeline { gap: 6px; }
+  .speed { margin-left: 0; }
+  .speed-label { display: none; }
+  .speed select { padding: 0 2px; }
+}
+@media (max-width: 420px) {
+  #time-total { display: none; }
   .recent li .icon-btn { opacity: 1; }
 }
 

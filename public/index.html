@@ -256,14 +256,34 @@
           <div class="field">
             <span class="field-label">Instrument sounds</span>
             <div class="segmented" role="radiogroup" aria-label="Instrument sounds">
-              <label><input type="radio" name="sound" value="better" /><span>Better (24 MB)</span></label>
+              <label><input type="radio" name="sound" value="better" /><span>Better (32 MB)</span></label>
               <label><input type="radio" name="sound" value="small" /><span>Small (1 MB)</span></label>
             </div>
           </div>
           <div class="switches">
             <label class="switch"><input type="checkbox" id="opt-only-shown" /><span>Play only the shown tracks</span></label>
           </div>
-          <p class="panel-note">Sounds download the first time you press play, then stay saved in this browser.</p>
+          <p class="panel-note" id="sound-status" aria-live="polite"></p>
+        </details>
+
+        <details class="panel" data-panel="practice" open>
+          <summary><h2>Practice</h2></summary>
+          <div class="switches">
+            <label class="switch"><input type="checkbox" id="opt-countin" /><span>Count in one bar before playing</span></label>
+            <label class="switch"><input type="checkbox" id="opt-metronome" /><span>Metronome click</span></label>
+            <label class="switch"><input type="checkbox" id="opt-loop" /><span>Loop</span></label>
+          </div>
+          <p class="panel-note">To loop a section, drag across those bars in the music. <button type="button" class="linklike" id="clear-range">Clear the loop section</button></p>
+          <div class="trainer">
+            <label class="switch"><input type="checkbox" id="opt-trainer" /><span>Speed trainer</span></label>
+            <p class="panel-note">Loops the music, starting slower and getting faster each time through.</p>
+            <div class="trainer-fields">
+              <label class="mini-field">Start <select id="trainer-start"><option value="40">40%</option><option value="50">50%</option><option value="60">60%</option><option value="70">70%</option><option value="75">75%</option><option value="80">80%</option><option value="90">90%</option></select></label>
+              <label class="mini-field">Add <select id="trainer-step"><option value="2">2%</option><option value="5">5%</option><option value="10">10%</option></select></label>
+              <label class="mini-field">Up to <select id="trainer-target"><option value="80">80%</option><option value="90">90%</option><option value="100">100%</option><option value="110">110%</option><option value="120">120%</option></select></label>
+            </div>
+            <p class="panel-note" id="trainer-status" aria-live="polite"></p>
+          </div>
         </details>
 
         <details class="panel" data-panel="fingering" id="fingering-panel" hidden open>
@@ -399,20 +419,18 @@
           <span id="time-total" class="time">0:00</span>
         </div>
         <div class="transport-options">
-          <button type="button" class="icon-btn toggle" id="loop-btn" aria-pressed="false" title="Loop (L). Drag across bars in the score to loop just those."><svg class="icon" aria-hidden="true"><use href="#i-loop" /></svg></button>
-          <button type="button" class="icon-btn toggle" id="countin-btn" aria-pressed="false" title="Count in before playing"><svg class="icon" aria-hidden="true"><use href="#i-countin" /></svg></button>
-          <button type="button" class="icon-btn toggle" id="metronome-btn" aria-pressed="false" title="Metronome (M)"><svg class="icon" aria-hidden="true"><use href="#i-metronome" /></svg></button>
+          <button type="button" class="icon-btn toggle labeled" id="loop-btn" aria-pressed="false" title="Loop (L). Drag across bars in the music to loop just those."><svg class="icon" aria-hidden="true"><use href="#i-loop" /></svg><span class="btn-label">Loop</span></button>
+          <button type="button" class="icon-btn toggle labeled" id="countin-btn" aria-pressed="false" title="Count in one bar before playing (C)"><svg class="icon" aria-hidden="true"><use href="#i-countin" /></svg><span class="btn-label">Count-in</span></button>
+          <button type="button" class="icon-btn toggle labeled" id="metronome-btn" aria-pressed="false" title="Metronome click (M)"><svg class="icon" aria-hidden="true"><use href="#i-metronome" /></svg><span class="btn-label">Click</span></button>
           <label class="volume" title="Volume">
             <svg class="icon" aria-hidden="true"><use href="#i-volume" /></svg>
             <span class="visually-hidden">Volume</span>
             <input type="range" id="volume" min="0" max="100" step="5" value="90" />
           </label>
-          <label class="speed" title="Playback speed">
-            <span class="visually-hidden">Speed</span>
-            <input type="range" id="speed" min="25" max="150" step="5" value="100" />
-            <output id="speed-value" for="speed">100%</output>
+          <label class="speed" title="Playback speed (, slower . faster)">
+            <span class="speed-label">Speed</span>
+            <select id="speed"><option value="25">25%</option><option value="40">40%</option><option value="50">50%</option><option value="60">60%</option><option value="70">70%</option><option value="75">75%</option><option value="80">80%</option><option value="85">85%</option><option value="90">90%</option><option value="95">95%</option><option value="100">100%</option><option value="110">110%</option><option value="120">120%</option><option value="125">125%</option><option value="150">150%</option></select>
           </label>
-          <button type="button" class="icon-btn speed-cycle" id="speed-cycle" title="Playback speed (tap to change)">100%</button>
         </div>
         <span id="player-status" class="player-status"></span>
       </div>
@@ -427,6 +445,8 @@
         <dt><kbd>Esc</kbd></dt><dd>Stop (or stop editing)</dd>
         <dt><kbd>L</kbd></dt><dd>Loop on or off</dd>
         <dt><kbd>M</kbd></dt><dd>Metronome on or off</dd>
+        <dt><kbd>C</kbd></dt><dd>Count-in on or off</dd>
+        <dt><kbd>,</kbd> <kbd>.</kbd></dt><dd>Slower or faster</dd>
         <dt><kbd>+</kbd> <kbd>−</kbd></dt><dd>Bigger or smaller music</dd>
         <dt><kbd>P</kbd></dt><dd>Print or save as PDF</dd>
         <dt><kbd>E</kbd></dt><dd>Edit the score</dd>
