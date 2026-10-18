@@ -224,6 +224,7 @@ body[data-view="home"] #top-search { visibility: hidden; }
   grid-template-rows: 1fr var(--transport-h);
   grid-template-areas: "side stage" "transport transport";
   height: calc(100vh - var(--topbar-h));
+  height: calc(100dvh - var(--topbar-h)); /* phones: the visible height, without the browser's toolbars */
 }
 .sidebar { grid-area: side; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 20px 18px 28px; }
 /* isolation keeps alphaTab's high z-index cursor inside the stage */
@@ -435,7 +436,7 @@ body.cursor-idle:not(.editing) .at-cursor-bar, body.cursor-idle:not(.editing) .a
 /* Printing straight from the page (fallback when the print window is blocked) */
 @media print {
   body { background: #fff; }
-  .topbar, .sidebar, .transport, .warnings, .status, .home, .toast { display: none !important; }
+  .topbar, .sidebar, .transport, .warnings, .status, .home, .toast, .tip, .edited-banner { display: none !important; }
   .viewer { display: block; height: auto; }
   .stage { padding: 0; overflow: visible; background: #fff; }
   .paper { box-shadow: none; padding: 0; overflow: visible; }

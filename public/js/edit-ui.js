@@ -46,7 +46,7 @@ export function createEditUI(host) {
   function firstSelection() {
     const score = host.score();
     const track = Math.min(...host.visible());
-    const beat = ed.beatOf(score, { track, staff: 0, bar: 0, voice: 0, beat: 0 });
+    const beat = ed.beatOf(score, { track, staff: 0, bar: host.bars().from, voice: 0, beat: 0 });
     return beat ? ed.selectionForBeat(beat) : null;
   }
 
@@ -213,7 +213,8 @@ export function createEditUI(host) {
 
     // Beat
     const text = $('edit-text');
-    if (document.activeElement !== text) text.value = beat.text || '';
+    // The score carries section names as beat text while it's shown; read the real text.
+    if (document.activeElement !== text) text.value = host.clean(() => beat.text) || '';
 
     // Bar
     $('edit-bar-number').textContent = String(sel.bar + 1);
@@ -231,7 +232,7 @@ export function createEditUI(host) {
   }
 
   function copyCurrentBar() {
-    clipboard = ed.copyBar(m, host.score(), sel.track, sel.bar, sel.staff ?? 0);
+    clipboard = host.clean(() => ed.copyBar(m, host.score(), sel.track, sel.bar, sel.staff ?? 0));
     $('edit-paste-bar').disabled = !clipboard;
     host.toast(`Copied bar ${sel.bar + 1}. Select another bar and paste with Ctrl+V.`);
   }
@@ -368,11 +369,13 @@ export function createEditUI(host) {
     const score = host.score();
     switch (e.key) {
       case 'ArrowRight':
-        select(ed.stepBeat(score, sel, 1), { scroll: true });
+      case 'ArrowLeft': {
+        // Stay within the bars that are shown.
+        const next = ed.stepBeat(score, sel, e.key === 'ArrowRight' ? 1 : -1);
+        const { from, to } = host.bars();
+        if (next.bar >= from && next.bar <= to) select(next, { scroll: true });
         return true;
-      case 'ArrowLeft':
-        select(ed.stepBeat(score, sel, -1), { scroll: true });
-        return true;
+      }
       case 'ArrowUp':
         select({ ...sel, string: sel.string + 1 });
         return true;

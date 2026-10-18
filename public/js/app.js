@@ -209,15 +209,9 @@ async function openLink(link, { fromHistory = false } = {}) {
     return;
   }
   setStatus('Fetching the tab...', 'loading', target);
+  let song;
   try {
-    const song = await loadSong(link, (message) => token === loadToken && setStatus(message, 'loading', target));
-    if (token !== loadToken) return;
-    await showBundle(song, {
-      preferredTrack: parsed.trackIndex ?? song.trackIndex ?? 0,
-      explicitTrack: parsed.trackIndex != null,
-      sourceUrl: song.source || link,
-      pushHistory: !fromHistory
-    });
+    song = await loadSong(link, (message) => token === loadToken && setStatus(message, 'loading', target));
   } catch (err) {
     if (token !== loadToken) return;
     console.warn(err);
@@ -238,6 +232,24 @@ async function openLink(link, { fromHistory = false } = {}) {
     const open = $('open-on-songsterr');
     open.href = parsed.url || `https://www.songsterr.com/a/wsa/tab-s${parsed.songId}`;
     open.hidden = false;
+    return;
+  }
+  if (token !== loadToken) return;
+  try {
+    await showBundle(song, {
+      preferredTrack: parsed.trackIndex ?? song.trackIndex ?? 0,
+      explicitTrack: parsed.trackIndex != null,
+      sourceUrl: song.source || link,
+      pushHistory: !fromHistory
+    });
+  } catch (err) {
+    // The tab arrived; turning it into music is what failed.
+    console.error(err);
+    setStatus(null, 'info', $('viewer-status'));
+    if (!state.score || !inViewer) showView('home');
+    const message = `Couldn't turn this tab into sheet music: ${err.message || err}`;
+    if (document.body.dataset.view === 'score') toast(message);
+    else setStatus(message, 'error');
   }
 }
 
@@ -299,14 +311,24 @@ async function showBundle(bundle, { preferredTrack = 0, explicitTrack = false, s
     sourceUrl,
     key: key || sourceUrl
   });
-  if (shown && sourceUrl) {
-    rememberSong({ url: sourceUrl, title: score.title, artist: score.artist });
-    const url = new URL(window.location.href);
-    url.search = '';
-    url.searchParams.set('url', sourceUrl);
-    if (pushHistory) history.pushState({ view: 'score' }, '', url);
-    else history.replaceState({ view: 'score' }, '', url);
-  }
+  if (shown && sourceUrl) rememberSong({ url: sourceUrl, title: score.title, artist: score.artist });
+  if (shown) recordScoreInHistory(pushHistory);
+}
+
+/** The address of the score on screen: its Songsterr link, the example, or the plain page for a file. */
+function scoreAddress() {
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  if (state.sourceUrl) url.searchParams.set('url', state.sourceUrl);
+  else if (state.key === 'demo') url.search = '?demo';
+  return url;
+}
+
+function recordScoreInHistory(push = true) {
+  const url = scoreAddress();
+  if (push) history.pushState({ view: 'score' }, '', url);
+  else history.replaceState({ view: 'score' }, '', url);
 }
 
 async function loadFile(file) {
@@ -327,7 +349,7 @@ async function loadFile(file) {
       score = alphaTab.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(await file.arrayBuffer()), api.settings);
     }
     if (!score.title) score.title = file.name.replace(/\.[^.]+$/, '');
-    await showScore(score, [], { key: `file:${file.name}:${file.size}` });
+    if (await showScore(score, [], { key: `file:${file.name}:${file.size}` })) recordScoreInHistory();
   } catch (err) {
     console.error(err);
     showView('home');
@@ -335,12 +357,12 @@ async function loadFile(file) {
   }
 }
 
-async function loadDemo() {
+async function loadDemo({ fromHistory = false } = {}) {
   ++loadToken;
   setStatus('Loading the example...', 'loading');
   try {
     const res = await fetch(asset('demo/demo-song.json'));
-    await showBundle(await res.json(), { key: 'demo' });
+    await showBundle(await res.json(), { key: 'demo', pushHistory: !fromHistory });
   } catch (err) {
     setStatus(`Couldn't load the example: ${err.message}`, 'error');
   }
@@ -352,6 +374,8 @@ async function loadDemo() {
  */
 async function showScore(score, warnings, { preferredTrack = 0, explicitTrack = false, bundle = null, sourceUrl = null, key = null } = {}) {
   if (state.dirty && state.saveFailed && !window.confirm('Your changes to this song could not be saved in this browser. Open the new song anyway?')) {
+    setStatus(null);
+    setStatus(null, 'info', $('viewer-status'));
     return false;
   }
   await flushSave();
@@ -370,6 +394,11 @@ async function showScore(score, warnings, { preferredTrack = 0, explicitTrack = 
     }
   }
 
+  // The synthesizer keeps mute and solo per channel across songs; clear the old song's.
+  if (state.score) {
+    api.changeTrackSolo(state.score.tracks, false);
+    api.changeTrackMute(state.score.tracks, false);
+  }
   state.bundle = bundle;
   state.sourceUrl = sourceUrl;
   state.key = key;
@@ -391,6 +420,8 @@ async function showScore(score, warnings, { preferredTrack = 0, explicitTrack = 
   showEditedBanner(restored);
   state.muted.clear();
   state.soloed.clear();
+  keptRange = null;
+  api.playbackRange = null; // a loop section belongs to the song it was made in
   state.endTime = 0;
   setStatus(null);
   setStatus(null, 'info', $('viewer-status'));
@@ -558,13 +589,13 @@ function buildTrackList() {
       const on = !state.muted.has(index);
       on ? state.muted.add(index) : state.muted.delete(index);
       mute.querySelector('use').setAttribute('href', on ? '#i-muted' : '#i-volume');
-      api.changeTrackMute([track], on);
+      applyTrackAudio(); // keeps "play only the shown tracks" in force
       return on;
     });
     const solo = trackToggle('i-headphones', 'Solo', state.soloed.has(index), () => {
       const on = !state.soloed.has(index);
       on ? state.soloed.add(index) : state.soloed.delete(index);
-      api.changeTrackSolo([track], on);
+      applyTrackAudio();
       return on;
     });
     li.append(label, mute, solo);
@@ -687,8 +718,10 @@ function applyTrackAudio() {
   const audible = tracks.filter((t) => !silent.includes(t));
   if (silent.length) api.changeTrackMute(silent, true);
   if (audible.length) api.changeTrackMute(audible, false);
-  const soloed = [...state.soloed].map((i) => tracks[i]).filter(Boolean);
+  const soloed = tracks.filter((t, i) => state.soloed.has(i));
+  const unsoloed = tracks.filter((t, i) => !state.soloed.has(i));
   if (soloed.length) api.changeTrackSolo(soloed, true);
+  if (unsoloed.length) api.changeTrackSolo(unsoloed, false);
 }
 
 // ---------------------------------------------------------------------------
@@ -811,7 +844,17 @@ function ensureVisible(index) {
 // Editing: history and score replacement
 // ---------------------------------------------------------------------------
 
+// (Re-applied when playback starts: listening to alphaTab's midiLoaded event
+// this early sends it into endless recursion.)
+let keptRange = null;
+function restoreLoopSection() {
+  if (keptRange) api.playbackRange = keptRange;
+  keptRange = null;
+}
+
 function replaceScore(score, selection) {
+  // A new score means new playback data, which drops the loop section; keep it.
+  keptRange = api.playbackRange;
   state.score = score;
   state.visible = state.visible.filter((i) => i < score.tracks.length);
   if (state.visible.length === 0) state.visible = [0];
@@ -834,8 +877,10 @@ function commitEdit(fn, { merge = false } = {}) {
   unlabelSections();
   const before = historyEntry();
   let selection;
+  let rebuilt;
   try {
     selection = fn(state.score, alphaTab.model);
+    rebuilt = rebuildScore(alphaTab, state.score, api.settings);
   } catch (err) {
     console.error(err);
     toast(`That edit didn't work: ${err.message || err}`);
@@ -849,7 +894,7 @@ function commitEdit(fn, { merge = false } = {}) {
   }
   state.redo = [];
   state.dirty = true;
-  replaceScore(rebuildScore(alphaTab, state.score, api.settings), selection);
+  replaceScore(rebuilt, selection);
   afterHistoryChange();
 }
 
@@ -899,6 +944,11 @@ const editUI = createEditUI({
   toast: (message) => toast(message),
   score: () => state.score,
   visible: () => state.visible,
+  bars: () => {
+    const last = state.score ? state.score.masterBars.length - 1 : 0;
+    return { from: Math.min(state.range.from - 1, last), to: state.range.to ? Math.min(state.range.to - 1, last) : last };
+  },
+  clean: withCleanScore,
   commit: commitEdit,
   undo: undoEdit,
   redo: redoEdit,
@@ -1160,7 +1210,7 @@ function updateSoundStatus() {
   const el = $('sound-status');
   if (!el) return;
   let text;
-  if (options.sound === 'small') text = 'Using the small sounds.';
+  if (options.sound === 'small') text = sound.active === 'better' ? 'Switching to the small sounds when playback pauses.' : 'Using the small sounds.';
   else if (sound.active === 'better') text = 'Using the better sounds.';
   else if (sound.activating?.set === 'better') text = 'Loading the better sounds…';
   else if (sound.betterState === 'downloading') text = `Downloading the better sounds (${Math.round(sound.betterProgress * 100)}%). Until then the small sounds play.`;
@@ -1183,9 +1233,13 @@ function activate(set, bytes) {
   }).then(() => {
     sound.active = set;
     sound.activating = null;
-    if (set === 'better') sound.betterBytes = null; // the synthesizer has its own copy
+    if (set === 'better') {
+      sound.betterBytes = null; // the synthesizer has its own copy
+      sound.betterState = 'idle'; // switching back later re-reads it from the browser's store
+    }
     updateSoundStatus();
     startIfWanted();
+    swapSoundsWhenQuiet(); // the choice may have changed while this set was unpacking
   });
   sound.activating = { set, promise };
   updateSoundStatus();
@@ -1222,16 +1276,22 @@ async function downloadBetter() {
     sound.betterState = 'failed';
   }
   updateSoundStatus();
-  swapToBetterWhenQuiet();
+  swapSoundsWhenQuiet();
 }
 
-/** Swaps the better set in, but never while music is playing. */
-function swapToBetterWhenQuiet(delay = 0) {
+/** Brings in the chosen sound set, but never while music is playing. */
+function swapSoundsWhenQuiet(delay = 0) {
   clearTimeout(sound.swapTimer);
   sound.swapTimer = setTimeout(() => {
-    if (options.sound !== 'better' || sound.betterState !== 'ready' || !sound.betterBytes) return;
-    if (sound.active === 'better' || sound.activating || isPlaying()) return;
-    activate('better', sound.betterBytes);
+    if (sound.activating || isPlaying()) return;
+    if (options.sound === 'small') {
+      if (sound.active === 'better') {
+        sound.active = null;
+        activateSmall();
+      }
+      return;
+    }
+    if (sound.active !== 'better' && sound.betterState === 'ready' && sound.betterBytes) activate('better', sound.betterBytes);
   }, delay);
 }
 
@@ -1239,6 +1299,7 @@ function startIfWanted() {
   if (!sound.wantPlay || sound.activating || !sound.active || !api.isReadyForPlayback) return;
   sound.wantPlay = false;
   setPlayerStatus('');
+  restoreLoopSection();
   api.play();
 }
 
@@ -1281,7 +1342,14 @@ function togglePlay() {
   lastToggle = performance.now();
   if (sound.active && !sound.activating && api.isReadyForPlayback) {
     clearTimeout(sound.swapTimer);
+    if (!isPlaying()) restoreLoopSection();
     api.playPause();
+    return;
+  }
+  if (sound.wantPlay) {
+    // A second press while the sounds load: don't start after all.
+    sound.wantPlay = false;
+    setPlayerStatus('');
     return;
   }
   sound.wantPlay = true;
@@ -1293,15 +1361,11 @@ function togglePlay() {
 /** The sound choice changed in the Playback panel. */
 function soundChoiceChanged() {
   updateSoundStatus();
-  if (options.sound === 'small') {
-    if (sound.active === 'better' && !isPlaying()) {
-      sound.active = null;
-      activateSmall();
-    }
-  } else if (sound.betterState === 'ready') {
-    swapToBetterWhenQuiet();
+  if (options.sound === 'better' && sound.active !== 'better' && !sound.betterBytes && sound.betterState !== 'downloading') {
+    sound.betterState = 'idle';
+    downloadBetter(); // quick when the browser has it stored; swaps in when done
   } else {
-    downloadBetter();
+    swapSoundsWhenQuiet();
   }
 }
 
@@ -1315,7 +1379,7 @@ api.playerStateChanged.on((e) => {
   if (playing) document.body.classList.remove('cursor-idle');
   // Paused or stopped: a good moment to bring in the better sounds (after a
   // short wait, so a quick pause-and-resume isn't interrupted).
-  if (!playing) swapToBetterWhenQuiet(1500);
+  if (!playing) swapSoundsWhenQuiet(1500);
   $('play-btn').classList.toggle('playing', playing);
   $('play-btn').setAttribute('aria-label', playing ? 'Pause' : 'Play');
 });
@@ -1351,7 +1415,12 @@ api.renderFinished.on(() => {
 });
 api.error.on((err) => {
   console.error(err);
-  setStatus(`Something went wrong while drawing the score: ${err.message || err}`, 'error', $('viewer-status'));
+  const sounds = /sound ?font|synth|audio/i.test(String(err?.message || err));
+  setStatus(
+    sounds ? `Playback ran into a problem: ${err.message || err}` : `Something went wrong while drawing the score: ${err.message || err}`,
+    'error',
+    $('viewer-status')
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -1460,8 +1529,11 @@ for (const input of document.querySelectorAll('.file-input')) {
   });
 }
 
-$('demo-btn').addEventListener('click', loadDemo);
-$('back-btn').addEventListener('click', () => showView('score', { rerender: true }));
+$('demo-btn').addEventListener('click', () => loadDemo());
+$('back-btn').addEventListener('click', () => {
+  showView('score', { rerender: true });
+  recordScoreInHistory();
+});
 $('home-link').addEventListener('click', (e) => {
   e.preventDefault();
   setStatus(null);
@@ -1469,9 +1541,12 @@ $('home-link').addEventListener('click', (e) => {
   history.pushState({ view: 'home' }, '', window.location.pathname);
 });
 window.addEventListener('popstate', () => {
-  const link = new URLSearchParams(window.location.search).get('url');
+  const params = new URLSearchParams(window.location.search);
+  const link = params.get('url');
+  const onScore = history.state?.view === 'score';
   if (link && link !== state.sourceUrl) openLink(link, { fromHistory: true }); // another song: load it
-  else if (link && state.score) showView('score', { rerender: true });
+  else if (params.has('demo') && state.key !== 'demo') loadDemo({ fromHistory: true });
+  else if (state.score && (link || params.has('demo') || onScore)) showView('score', { rerender: true });
   else showView('home');
 });
 
@@ -1627,7 +1702,7 @@ $('opt-metronome').addEventListener('change', (e) => {
 $('clear-range').addEventListener('click', () => {
   api.playbackRange = null;
   api.clearPlaybackRangeHighlight?.();
-  toast('The whole song will play and loop again');
+  toast(options.loop ? 'The whole song will loop again' : 'Cleared the loop section');
 });
 $('opt-trainer').addEventListener('change', (e) => setTrainer(e.target.checked));
 for (const id of ['trainer-start', 'trainer-step', 'trainer-target']) {
@@ -1657,13 +1732,14 @@ $('relay-input').value = prefs.get('relay', '');
 
 document.addEventListener('keydown', (e) => {
   if (document.body.dataset.view !== 'score') return;
+  if (document.querySelector('dialog[open]')) return; // the dialog handles its own keys (Esc closes it)
   const tag = e.target.tagName;
   const typing = tag === 'TEXTAREA' || tag === 'SELECT' || (tag === 'INPUT' && !['checkbox', 'radio', 'range'].includes(e.target.type));
   if (typing) return;
   // A control that was last clicked with the mouse shouldn't swallow Space
   // (it should play); keyboard users pressing a control they tabbed to keep
   // the normal behaviour.
-  const control = tag === 'BUTTON' || tag === 'INPUT';
+  const control = tag === 'BUTTON' || tag === 'INPUT' || tag === 'SUMMARY' || tag === 'A';
   if (control && (e.key === 'Enter' || (e.key === ' ' && !usingPointer))) return;
   // Sliders and option buttons use the arrow keys themselves.
   if (tag === 'INPUT' && e.key.startsWith('Arrow')) return;
@@ -1764,7 +1840,12 @@ window.addEventListener('drop', (e) => {
 setupBookmarklet($('bookmarklet'), asset('./'));
 listenForBookmarklet({
   onWaiting: () => setStatus('Waiting for the song from Songsterr...', 'loading'),
-  onBundle: (bundle) => showBundle(bundle, { preferredTrack: bundle.trackIndex ?? trackFromLink(bundle.source), sourceUrl: bundle.source }),
+  onBundle: (bundle) =>
+    showBundle(bundle, { preferredTrack: bundle.trackIndex ?? trackFromLink(bundle.source), sourceUrl: bundle.source }).catch((err) => {
+      console.error(err);
+      showView('home');
+      setStatus(`Couldn't turn this tab into sheet music: ${err.message || err}`, 'error');
+    }),
   onError: (message) => setStatus(message, 'error')
 });
 
@@ -1793,10 +1874,10 @@ showView('home');
 const params = new URLSearchParams(window.location.search);
 if (params.get('url')) {
   $('home-search-input').value = params.get('url');
-  openLink(params.get('url'));
+  openLink(params.get('url'), { fromHistory: true }); // already in the address bar
 } else if (params.get('q')) {
   $('home-search-input').value = params.get('q');
   runSearch(params.get('q'));
 } else if (params.has('demo')) {
-  loadDemo();
+  loadDemo({ fromHistory: true });
 }
