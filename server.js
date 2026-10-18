@@ -79,6 +79,15 @@ async function handleApi(res, key, produce) {
   }
 }
 
+/** The decoded request path, or null when its %-escapes are malformed. */
+export function decodePath(pathname) {
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+}
+
 export function createAppServer() {
   return createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -95,13 +104,11 @@ export function createAppServer() {
       if (!q) return send(res, 400, JSON.stringify({ error: 'Missing ?q=' }));
       return handleApi(res, `search:${q.toLowerCase()}`, () => searchSongsterr(q, { get }));
     }
-    if (url.pathname.startsWith('/vendor/sounds/')) {
-      return serveFile(res, SOUNDS_DIR, decodeURIComponent(url.pathname.slice('/vendor/sounds/'.length)));
-    }
-    if (url.pathname.startsWith('/vendor/alphatab/')) {
-      return serveFile(res, ALPHATAB_DIR, decodeURIComponent(url.pathname.slice('/vendor/alphatab/'.length)));
-    }
-    return serveFile(res, PUBLIC_DIR, decodeURIComponent(url.pathname));
+    const path = decodePath(url.pathname);
+    if (path === null) return send(res, 400, 'Bad request', 'text/plain');
+    if (path.startsWith('/vendor/sounds/')) return serveFile(res, SOUNDS_DIR, path.slice('/vendor/sounds/'.length));
+    if (path.startsWith('/vendor/alphatab/')) return serveFile(res, ALPHATAB_DIR, path.slice('/vendor/alphatab/'.length));
+    return serveFile(res, PUBLIC_DIR, path);
   });
 }
 

@@ -291,3 +291,65 @@ test('a fast run that fits under the hand stays in one position', () => {
   const result = optimizeFingering(m, score, 0);
   assert.equal(result.shiftsAfter, 0);
 });
+
+test('low-tuned guitars are guitars: drop D, D standard, 7-string', async () => {
+  const { looksLikeBass } = await import('../public/js/fingering.js');
+  const track = (title, instrumentId, tuning) => ({ meta: { title, instrumentId }, data: { tuning, measures: [{ voices: [{ beats: [] }] }] } });
+  const score = songsterrToScore(alphaTab, {
+    title: 't',
+    tracks: [
+      track('Distortion Guitar', 30, [64, 59, 55, 50, 45, 38]),
+      track('Guitar', 25, [62, 57, 53, 48, 43, 38]),
+      track('7-string Guitar', 30, [64, 59, 55, 50, 45, 40, 35]),
+      track('Six', 34, [65, 60, 55, 50, 45, 40]),
+      track('Bass guitar', 0, [43, 38, 33, 28])
+    ]
+  }).score;
+  assert.deepEqual(score.tracks.map((t) => looksLikeBass(t.staves[0])), [false, false, false, true, true]);
+  assert.deepEqual(score.tracks.slice(0, 3).map((t) => canConvertToFourString(t.staves[0])), [false, false, false]);
+  // Without an instrument sound or a name, a tuning below a guitar's still says bass.
+  assert.equal(looksLikeBass(scoreFrom(BASS5, [[[[0, 0]]]]).tracks[0].staves[0]), true);
+});
+
+test('a note is not put on a string another voice is still holding', () => {
+  // Voice 2 holds an A on the G string for the whole bar while the melody walks down.
+  const measures = [
+    {
+      signature: [4, 4],
+      voices: [
+        { beats: [[1, 3], [3, 11], [3, 10], [3, 8]].map(([string, fret]) => ({ type: 4, duration: [1, 4], notes: [{ string, fret }] })) },
+        { beats: [{ type: 1, duration: [1, 1], notes: [{ string: 2, fret: 2 }] }] }
+      ]
+    }
+  ];
+  let score = songsterrToScore(alphaTab, { tracks: [{ data: { tuning: GUITAR, measures } }] }).score;
+  const before = pitches(score);
+  optimizeFingering(m, score, 0, { style: 'low' });
+  score = rebuildScore(alphaTab, score, settings);
+  assert.deepEqual(pitches(score), before);
+  const [melody, bass] = score.tracks[0].staves[0].bars[0].voices;
+  const held = bass.beats[0].notes[0].string;
+  for (const beat of melody.beats) assert.notEqual(beat.notes[0].string, held, 'the held note keeps its string');
+});
+
+test('a tie running past the optimized bars follows its note', () => {
+  let score = scoreFrom(GUITAR, [[[[2, 2]], [[4, 7]]], [[[4, 7, { tie: true }]], [[4, 5]]]]);
+  score = rebuildScore(alphaTab, score, settings);
+  const before = pitches(score);
+  optimizeFingering(m, score, 0, { fromBar: 0, toBar: 0, style: 'low' });
+  score = rebuildScore(alphaTab, score, settings);
+  assert.deepEqual(pitches(score), before);
+  const bars = score.tracks[0].staves[0].bars;
+  const origin = bars[0].voices[0].beats.at(-1).notes[0];
+  const tied = bars[1].voices[0].beats[0].notes[0];
+  assert.equal(tied.isTieDestination, true);
+  assert.deepEqual([tied.string, tied.fret], [origin.string, origin.fret]);
+});
+
+test('tempo of each bar: a change at its start, or the last change before it', async () => {
+  const { barTempos } = await import('../public/js/fingering.js');
+  const measures = [0, 1, 2].map((i) => ({ ...(i === 0 ? { signature: [4, 4] } : {}), voices: [{ beats: [{ type: 1, duration: [1, 1], notes: [{ string: 0, fret: i }] }] }] }));
+  const tempo = [{ measure: 0, position: 0, bpm: 100 }, { measure: 0, position: 0.5, bpm: 160 }, { measure: 2, position: 0.5, bpm: 80 }];
+  const score = songsterrToScore(alphaTab, { tracks: [{ data: { tuning: GUITAR, automations: { tempo }, measures } }] }).score;
+  assert.deepEqual(barTempos(score), [100, 160, 160]);
+});

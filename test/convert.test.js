@@ -141,3 +141,20 @@ test('mixes tracks by instrument: drums and bass centred, guitars spread', async
   assert.equal(drums.primaryChannel, 9);
   assert.ok(guitar.volume > drums.volume);
 });
+
+test('bass clef for basses only: 7-string and baritone guitars read treble clef', () => {
+  const track = (meta, tuning) => ({ meta, data: { tuning, measures: [{ voices: [{ beats: [] }] }] } });
+  const { score } = songsterrToScore(alphaTab, {
+    tracks: [
+      track({ instrumentId: 30 }, [64, 59, 55, 50, 45, 40, 35]),
+      track({ instrumentId: 26 }, [59, 54, 50, 45, 40, 35]),
+      track({ instrumentId: 33 }, [43, 38, 33, 28]),
+      track({}, [43, 38, 33, 28, 23]),
+      track({}, [64, 59, 55, 50, 45, 40])
+    ]
+  });
+  const clefs = score.tracks.map((t) => t.staves[0].bars[0].clef);
+  assert.deepEqual(clefs, [m.Clef.G2, m.Clef.G2, m.Clef.F4, m.Clef.F4, m.Clef.G2]);
+  // A track without an instrument plays with a sound that fits its tuning.
+  assert.deepEqual(score.tracks.slice(3).map((t) => t.playbackInfo.program), [33, 25]);
+});

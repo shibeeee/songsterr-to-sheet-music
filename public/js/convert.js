@@ -77,7 +77,7 @@ export function songsterrToScore(alphaTab, bundle) {
       channel = nextChannel === PERCUSSION_CHANNEL ? ++nextChannel : nextChannel;
       nextChannel = (channel + 1) % 16;
     }
-    const program = entry.meta.instrumentId ?? entry.data.instrumentId ?? 25;
+    const program = trackProgram(entry);
     const family = isDrums ? 'drums' : instrumentFamily(program);
     const nth = panCounts.get(family) || 0;
     panCounts.set(family, nth + 1);
@@ -97,6 +97,17 @@ export function normalizeTracks(bundle) {
   return (bundle.tracks || [])
     .map((t) => (t && t.data ? { meta: t.meta || {}, data: t.data } : { meta: {}, data: t }))
     .filter((t) => t.data && Array.isArray(t.data.measures));
+}
+
+// A lowest string below this (A#1) is bass range (only 8-string guitars go there too).
+const BASS_BELOW = 34;
+
+/** GM program of a track: Songsterr's instrument, or else a bass or guitar sound by its tuning. */
+function trackProgram({ meta, data }) {
+  const given = meta.instrumentId ?? data.instrumentId;
+  if (given != null) return given;
+  const tuning = Array.isArray(data.tuning) && data.tuning.length ? data.tuning : meta.tuning;
+  return Array.isArray(tuning) && tuning.length && Math.min(...tuning) < BASS_BELOW ? 33 : 25;
 }
 
 /** General MIDI program number to a broad instrument family. */
@@ -269,7 +280,7 @@ function buildTrack(m, score, entry, ctx) {
   const staff = new m.Staff();
   track.addStaff(staff);
 
-  const instrumentId = meta.instrumentId ?? data.instrumentId ?? 25;
+  const instrumentId = trackProgram(entry);
   track.playbackInfo.program = ctx.isDrums ? 0 : clamp(instrumentId, 0, 127);
   track.playbackInfo.primaryChannel = ctx.channel;
   track.playbackInfo.secondaryChannel = ctx.channel;
@@ -294,8 +305,11 @@ function buildTrack(m, score, entry, ctx) {
   if (typeof data.capo === 'number' && data.capo > 0) staff.capo = data.capo;
 
   const drumKit = ctx.isDrums ? new DrumKit(m, track) : null;
+  // Bass clef for basses. 7-string and baritone guitars go as low as some
+  // basses but still read treble clef; other instruments go by their range.
+  const family = instrumentFamily(track.playbackInfo.program);
   const lowest = Array.isArray(tuning) && tuning.length ? Math.min(...tuning) : 40;
-  const isBass = !ctx.isDrums && lowest < 36;
+  const isBass = !ctx.isDrums && (family === 'bass' || (family !== 'guitar' && family !== 'drive-guitar' && lowest < BASS_BELOW));
 
   for (let i = 0; i < ctx.measureCount; i++) {
     const bar = new m.Bar();

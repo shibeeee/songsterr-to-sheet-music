@@ -54,6 +54,9 @@ export function parseSongsterrUrl(input) {
   //      ...-s12345/r4525144     (r = a specific revision of the tab)
   //      ...-s12345t2/r4525144
   const match = url.pathname.match(/(?:-|\/)s(\d+)(?:t(\d+))?(?:\/r(\d+)(?:t(\d+))?)?\/?$/);
+  // Old links: /a/wa/song?id=12345 (the canonical link is built later).
+  const oldId = url.searchParams.get('id');
+  if (!match && /^\d+$/.test(oldId || '')) return { songId: Number(oldId), url: null, trackIndex: null, revisionId: null };
   if (!match) {
     throw new SongsterrError('Could not find a song id in that link. It should contain something like "-s12345".', 400);
   }
@@ -232,12 +235,13 @@ export async function fetchSongsterrSong(input, { get, onProgress = () => {} }) 
     throw new SongsterrError('Found the song but none of its tracks could be downloaded.');
   }
 
+  const artist = typeof revision.artist === 'string' ? revision.artist : revision.artist?.name || '';
   return {
     songId,
     revisionId,
     title: revision.title || 'Untitled',
-    artist: typeof revision.artist === 'string' ? revision.artist : revision.artist?.name || '',
-    source: url || songUrl({ songId, artist: revision.artist, title: revision.title }),
+    artist,
+    source: url || songUrl({ songId, artist, title: revision.title }),
     trackIndex,
     tracks,
     warnings

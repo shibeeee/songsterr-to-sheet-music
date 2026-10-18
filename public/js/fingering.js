@@ -53,6 +53,7 @@ const POSITION_COST = 0.04; // per fret of hand position, keeps things low
 const HIGH_POSITION_COST = 0.15; // extra per fret above the 12th
 const STRING_CROSS_COST = 0.15;
 const LEGATO_BREAK_COST = 8;
+const HELD_STRING_COST = 1000; // a note on a string another note is still ringing on
 const REPEAT_COST = 0.8; // per beat of a repeated bar fingered differently
 
 const STYLE_COSTS = {
@@ -135,15 +136,44 @@ function buildEvents(staff, fromBar, toBar) {
   return events;
 }
 
-/** Tempo (quarter notes per minute) at the start of each bar. */
-function barTempos(score) {
+/**
+ * Tempo (quarter notes per minute) at the start of each bar: a change right
+ * at the start, or else the last change of an earlier bar.
+ */
+export function barTempos(score) {
   const out = [];
   let tempo = score.tempo || 120;
   for (const mb of score.masterBars) {
-    if (mb.tempoAutomations?.length) tempo = mb.tempoAutomations[0].value || tempo;
-    out.push(tempo);
+    const changes = [...(mb.tempoAutomations || [])].sort((a, c) => a.ratioPosition - c.ratioPosition);
+    out.push(changes.length && changes[0].ratioPosition === 0 ? changes[0].value || tempo : tempo);
+    if (changes.length) tempo = changes[changes.length - 1].value || tempo;
   }
   return out;
+}
+
+/**
+ * For each event, the notes of earlier events still sounding when it starts
+ * (a long note in another voice): their strings are busy.
+ */
+function heldNotes(staff, events) {
+  const notes = [];
+  const lastBar = events[events.length - 1].bar;
+  for (let b = 0; b <= lastBar && b < staff.bars.length; b++) {
+    for (const voice of staff.bars[b].voices) {
+      for (const beat of voice.beats) {
+        const start = beat.absolutePlaybackStart;
+        for (const note of beat.notes) notes.push({ note, start, end: start + beat.playbackDuration });
+      }
+    }
+  }
+  notes.sort((a, c) => a.start - c.start);
+  let next = 0;
+  let sounding = [];
+  return events.map((ev) => {
+    while (next < notes.length && notes[next].start < ev.time) sounding.push(notes[next++]);
+    sounding = sounding.filter((it) => it.end > ev.time);
+    return sounding.map((it) => it.note);
+  });
 }
 
 /** Seconds from each event to the next one. */
@@ -191,6 +221,7 @@ function isFixed(note) {
 /**
  * All playable ways to place the event's notes: each note on its own string,
  * fret 0..maxFret, chord within reach. Fixed notes (harmonics) keep their place.
+ * Strings in ev.busy (still ringing from an earlier note) are avoided when possible.
  */
 function candidatesFor(staff, ev, ctx) {
   const { maxFret, style, bass } = ctx;
@@ -206,7 +237,7 @@ function candidatesFor(staff, ev, ctx) {
     return { place, extent: extentOf(frets), stringsUsed, cost: shapeCost(frets, stringsUsed, style) };
   };
 
-  const assign = (i, chosen) => {
+  const assign = (i, chosen, avoid) => {
     if (results.length > 4000) return;
     if (i === movable.length) {
       const cand = make(new Map(chosen.map((c, k) => [movable[k], { string: c.string, fret: c.fret }])));
@@ -214,17 +245,20 @@ function candidatesFor(staff, ev, ctx) {
       return;
     }
     for (let s = 1; s <= strings; s++) {
-      if (used.has(s)) continue;
+      if (used.has(s) || avoid.has(s)) continue;
       const fret = movable[i].pitch - stringPitch(staff, s);
       if (fret < 0 || fret > maxFret) continue;
       used.add(s);
       chosen.push({ string: s, fret });
-      assign(i + 1, chosen);
+      assign(i + 1, chosen, avoid);
       chosen.pop();
       used.delete(s);
     }
   };
-  assign(0, []);
+  const busy = ev.busy ?? new Set();
+  assign(0, [], busy);
+  // Better to cut a ringing note short than to have no way to play this one.
+  if (results.length === 0 && busy.size) assign(0, [], new Set());
 
   results.sort((a, b) => a.cost - b.cost);
   const top = results.slice(0, MAX_CANDIDATES);
@@ -304,6 +338,23 @@ function statesFor(cand, maxFret) {
 }
 
 /**
+ * Strings that the held notes (latest event first) occupy on the path ending
+ * in `node`, which is at event k.
+ */
+function ringingStrings(node, k, held) {
+  const out = new Set();
+  for (const { note, at } of held) {
+    while (node && k > at) {
+      node = node.back;
+      k--;
+    }
+    const pos = node?.cand.place.get(note);
+    if (pos) out.add(pos.string);
+  }
+  return out;
+}
+
+/**
  * Finds the cheapest (shape, position) path through the events.
  * bias[i], when set, adds a cost to some shapes of event i.
  */
@@ -319,8 +370,11 @@ function bestPath(events, options, gaps, ctx, bias) {
   for (let i = 1; i < events.length; i++) {
     const links = linksBetween(events[i - 1], events[i]);
     const urgency = shiftUrgency(gaps[i]);
-    const pairwise = links.length > 0 || options[i].some((c) => c.stringsUsed.length === 1);
+    const held = events[i].held ?? [];
+    const pairwise = links.length > 0 || held.length > 0 || options[i].some((c) => c.stringsUsed.length === 1);
     const pairs = pairwise ? options[i - 1].map((p) => options[i].map((c) => pairCost(p, c, links))) : null;
+    // Strings still ringing from notes placed earlier on each path.
+    const ringing = held.length ? new Map(layer.map((p) => [p, ringingStrings(p, i - 1, held)])) : null;
 
     // Best previous state for each hand position (when only the position matters).
     const bestAt = new Map();
@@ -339,6 +393,7 @@ function bestPath(events, options, gaps, ctx, bias) {
         for (const p of pairwise ? layer : bestAt.values()) {
           const pair = pairwise ? pairs[p.cand.i][cand.i] : none;
           let c = p.cost + pair.cost;
+          if (ringing && cand.stringsUsed.some((s) => ringing.get(p).has(s))) c += HELD_STRING_COST;
           if (p.h !== st.h) {
             // Open strings leave the hand free; a slide moves it anyway.
             const factor = urgency * (p.cand.extent ? 1 : 0.5) * (pair.glide ? 0.3 : 1);
@@ -457,6 +512,20 @@ export function optimizeFingering(m, score, trackIndex, { fromBar = 0, toBar = I
     for (const ev of events) for (const n of ev.notes) n.pitch = notePitch(staff, n);
     result.shiftsBefore += countShifts(events, ctx);
 
+    // Notes still ringing when an event starts (a long note in another voice)
+    // keep their string busy. A string held by a note that stays put (outside
+    // the range, or a harmonic) is avoided; for notes being placed, the path
+    // search keeps them apart.
+    const eventOf = new Map();
+    events.forEach((ev, i) => {
+      for (const n of ev.notes) if (!isFixed(n)) eventOf.set(n, i);
+    });
+    heldNotes(staff, events).forEach((notes, i) => {
+      events[i].busy = new Set(notes.filter((n) => !eventOf.has(n)).map((n) => n.string));
+      events[i].held = notes.filter((n) => eventOf.has(n)).map((n) => ({ note: n, at: eventOf.get(n) }));
+      events[i].held.sort((a, c) => c.at - a.at);
+    });
+
     const options = events.map((ev) => candidatesFor(staff, ev, ctx));
     const gaps = eventGaps(score, events);
     let path = bestPath(events, options, gaps, ctx, null);
@@ -485,6 +554,17 @@ export function optimizeFingering(m, score, trackIndex, { fromBar = 0, toBar = I
         }
       }
     }
+    // Ties running past the last bar: the rest of the tie follows the note.
+    for (const ev of events) {
+      for (const n of ev.notes) {
+        let from = n;
+        for (let d = n.tieDestination; d && d.beat.voice.bar.index > last; from = d, d = d.tieDestination) {
+          if (d.beat.notes.some((o) => o !== d && o.string === from.string)) break;
+          d.string = from.string;
+          d.fret = from.fret;
+        }
+      }
+    }
     result.shiftsAfter += countShifts(events, ctx);
     for (const ev of events) for (const n of ev.notes) delete n.pitch;
   }
@@ -495,10 +575,17 @@ export function optimizeFingering(m, score, trackIndex, { fromBar = 0, toBar = I
 // 5/6-string bass to 4-string
 // ---------------------------------------------------------------------------
 
-/** Bass-like: low tuning, a bass instrument sound (GM 33-40), or "bass" in the name. */
+/**
+ * Bass-like, decided by the instrument sound first (GM 33-40 is a bass, 25-32
+ * a guitar, however low it is tuned), then "bass" in the name, and only then
+ * by the tuning: 4 to 6 strings reaching below B1, lower than guitars usually go.
+ */
 export function looksLikeBass(staff) {
   const program = staff.track?.playbackInfo?.program;
-  return Math.min(...staff.tuning) < 40 || (program >= 32 && program <= 39) || /bass/i.test(staff.track?.name || '');
+  if (program >= 32 && program <= 39) return true;
+  if (program >= 24 && program <= 31) return false;
+  if (/bass/i.test(staff.track?.name || '')) return true;
+  return staff.tuning.length >= 4 && staff.tuning.length <= 6 && Math.min(...staff.tuning) < 34;
 }
 
 export function canConvertToFourString(staff) {

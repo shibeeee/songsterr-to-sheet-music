@@ -217,3 +217,20 @@ test('falls back to the latest version when the linked revision is gone', async 
   assert.equal(song.revisionId, 999);
   assert.match(song.warnings[0], /latest version/);
 });
+
+test('reads old links like /a/wa/song?id=27', () => {
+  const r = parseSongsterrUrl('https://www.songsterr.com/a/wa/song?id=27');
+  assert.deepEqual([r.songId, r.url, r.trackIndex, r.revisionId], [27, null, null, null]);
+  assert.throws(() => parseSongsterrUrl('https://www.songsterr.com/a/wa/song?id=abc'), /song id/);
+});
+
+test('builds the source link from the artist name when the artist is an object', async () => {
+  const routes = {
+    'https://www.songsterr.com/api/meta/42': { songId: 42, revisionId: 7, image: 'img', title: 'Song', artist: { name: 'The Band' }, tracks: [{ partId: 0 }] },
+    [`${CDN}/42/7/img/0.json`]: { measures: [] }
+  };
+  const get = async (url) => (routes[url] ? { ok: true, data: routes[url] } : { ok: false, status: 404 });
+  const song = await fetchSongsterrSong('42', { get });
+  assert.equal(song.artist, 'The Band');
+  assert.equal(song.source, 'https://www.songsterr.com/a/wsa/the-band-song-tab-s42');
+});

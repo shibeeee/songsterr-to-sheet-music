@@ -180,3 +180,152 @@ test('copying a bar and pasting it over another', () => {
   // Drums and stringed parts don't mix.
   assert.ok(ed.pasteBar(m, score, 2, 0, clip) > 0);
 });
+
+/** A one-track score from Songsterr-style bars: each bar is a list of beats, a beat is [type, notes]. */
+function small(bars, { tuning = [64, 59, 55, 50, 45, 40], automations, extra = [] } = {}) {
+  const measures = bars.map((beats, i) => ({
+    ...(i === 0 ? { signature: [4, 4] } : {}),
+    ...(extra[i] || {}),
+    voices: [{ beats: beats.map(([type, notes]) => ({ type, duration: [1, type], notes })) }]
+  }));
+  return songsterrToScore(alphaTab, { tracks: [{ data: { tuning, automations, measures } }] }).score;
+}
+
+test('removing the start of a tie, hammer-on or slide still rebuilds', () => {
+  // Bar 1: tie on the G string, then a hammer-on and a slide; bar 2 is where they land.
+  const make = () =>
+    small([
+      [[4, [{ string: 2, fret: 5 }]], [4, [{ string: 2, fret: 5, tie: true }]], [4, [{ string: 1, fret: 3, hp: true }]], [4, [{ string: 0, fret: 5, slide: 'legato' }]]],
+      [[2, [{ string: 0, fret: 7 }]], [2, [{ string: 1, fret: 5 }]]]
+    ]);
+  const at = (beat, string = 4) => ({ track: 0, staff: 0, bar: 0, voice: 0, beat, string });
+  const edits = {
+    deleteNote: (s) => ed.deleteNote(m, s, at(0)),
+    makeRest: (s) => ed.makeRest(m, s, at(0)),
+    deleteBeat: (s) => ed.deleteBeat(m, s, at(0)),
+    deleteBar: (s) => ed.deleteBar(m, s, 0),
+    pasteBar: (s) => ed.pasteBar(m, s, 0, 0, ed.copyBar(m, s, 0, 1))
+  };
+  for (const [name, edit] of Object.entries(edits)) {
+    for (const earlier of [false, true]) {
+      let score = make();
+      if (earlier) score = rebuild(score);
+      edit(score);
+      assert.doesNotThrow(() => (score = rebuild(score)), name);
+      for (const bar of score.tracks[0].staves[0].bars) {
+        for (const beat of bar.voices[0].beats) {
+          for (const n of beat.notes) if (n.isTieDestination) assert.ok(n.tieOrigin, `${name}: a tied note has its origin`);
+        }
+      }
+    }
+  }
+  // The note that was tied to the deleted one is a note of its own now.
+  const score = make();
+  ed.deleteNote(m, score, at(0));
+  const second = ed.beatOf(rebuild(score), at(1)).notes[0];
+  assert.equal(second.isTieDestination, false);
+  assert.equal(second.fret, 5);
+});
+
+test('duplicating a bar ties the next bar to the copy', () => {
+  let score = small([
+    [[2, [{ string: 2, fret: 2 }]], [2, [{ string: 4, fret: 7 }]]],
+    [[2, [{ string: 4, fret: 7, tie: true }]], [2, [{ string: 4, fret: 5 }]]]
+  ]);
+  for (const earlier of [false, true]) {
+    if (earlier) score = rebuild(score);
+    ed.duplicateBar(m, score, 0);
+    score = rebuild(score);
+    const last = score.tracks[0].staves[0].bars.length - 1;
+    const tied = ed.beatOf(score, { ...first, bar: last, beat: 0 }).notes[0];
+    assert.equal(tied.isTieDestination, true);
+    assert.equal(tied.tieOrigin.beat.voice.bar.index, last - 1);
+    assert.equal(tied.tieOrigin.tieDestination, tied);
+  }
+});
+
+test('deleting the bar with the repeat sign moves the sign back one bar', () => {
+  const bars = [0, 1, 2, 3].map((f) => [[1, [{ string: 0, fret: f }]]]);
+  let score = small(bars, { extra: [{ repeatStart: true }, {}, { repeat: 2 }] });
+  ed.deleteBar(m, score, 2);
+  score = rebuild(score);
+  assert.equal(score.masterBars[0].isRepeatStart, true);
+  assert.equal(score.masterBars[1].repeatCount, 2);
+  // A repeat of just that one bar goes with it.
+  score = small(bars, { extra: [{}, { repeatStart: true, repeat: 3 }] });
+  ed.deleteBar(m, score, 1);
+  score = rebuild(score);
+  assert.deepEqual(score.masterBars.map((mb) => mb.repeatCount), [0, 0, 0]);
+});
+
+test('tempo: the last change of a bar carries on, and inserting a first bar keeps the start tempo', () => {
+  const bars = [[[1, [{ string: 0, fret: 0 }]]], [[1, [{ string: 0, fret: 1 }]]], [[1, [{ string: 0, fret: 2 }]]]];
+  let score = small(bars, {
+    automations: { tempo: [{ measure: 0, position: 0, bpm: 100 }, { measure: 0, position: 0.5, bpm: 160 }, { measure: 2, position: 0.5, bpm: 80 }] }
+  });
+  assert.equal(ed.tempoAt(score, 0), 100);
+  assert.equal(ed.tempoAt(score, 1), 160);
+  assert.equal(ed.tempoAt(score, 2), 160); // its change comes later in the bar
+
+  ed.insertBar(m, score, 0);
+  score = rebuild(score);
+  assert.equal(ed.tempoAt(score, 0), 100);
+  assert.equal(score.tempo, 100);
+  assert.deepEqual(score.masterBars[1].tempoAutomations.map((a) => a.value), [160]);
+
+  // Deleting a bar hands the tempo it ended with to the next one.
+  ed.deleteBar(m, score, 1);
+  score = rebuild(score);
+  assert.equal(ed.tempoAt(score, 1), 160);
+  assert.deepEqual(score.masterBars[1].tempoAutomations.map((a) => [a.ratioPosition, a.value]), [[0, 160]]);
+});
+
+test('pasting onto a track with other strings keeps every pitch', () => {
+  const pitch = (staff, n) => staff.tuning[staff.tuning.length - n.string] + n.fret;
+  const chord = [{ string: 5, fret: 0 }, { string: 4, fret: 2 }, { string: 3, fret: 2 }, { string: 0, fret: 0 }];
+  const bar = [[4, [{ string: 5, fret: 0 }]], [4, [{ string: 0, fret: 0 }]], [2, chord]];
+  let score = songsterrToScore(alphaTab, {
+    tracks: [
+      { data: { tuning: [64, 59, 55, 50, 45, 40], measures: [{ signature: [4, 4], voices: [{ beats: bar.map(([type, notes]) => ({ type, duration: [1, type], notes })) }] }] } },
+      { data: { tuning: [64, 59, 55, 50, 45, 40, 35], measures: [{ voices: [{ beats: [{ type: 1, duration: [1, 1], rest: true, notes: [] }] }] }] } },
+      { data: { tuning: [43, 38, 33, 28, 23], measures: [{ voices: [{ beats: [{ type: 1, duration: [1, 1], rest: true, notes: [] }] }] }] } }
+    ]
+  }).score;
+  const sounding = (s, t) => {
+    const staff = s.tracks[t].staves[0];
+    return staff.bars[0].voices[0].beats.map((b) => b.notes.map((n) => pitch(staff, n)).sort((a, c) => a - c));
+  };
+  const clip = ed.copyBar(m, score, 0, 0);
+  assert.equal(ed.pasteBar(m, score, 1, 0, clip), 0);
+  assert.equal(ed.pasteBar(m, score, 2, 0, clip), 0);
+  score = rebuild(score);
+  const source = sounding(score, 0);
+  assert.deepEqual(sounding(score, 1), source);
+  assert.deepEqual(sounding(score, 2), source);
+  // On the 7-string the strings stay the same counted from the top, so the frets don't change.
+  const seven = score.tracks[1].staves[0].bars[0].voices[0].beats.map((b) => b.notes.map((n) => `${n.string}:${n.fret}`).sort());
+  const six = score.tracks[0].staves[0].bars[0].voices[0].beats.map((b) => b.notes.map((n) => `${n.string + 1}:${n.fret}`).sort());
+  assert.deepEqual(seven, six);
+  for (const beat of score.tracks[2].staves[0].bars[0].voices[0].beats) {
+    assert.equal(new Set(beat.notes.map((n) => n.string)).size, beat.notes.length, 'one note per string');
+  }
+});
+
+test('switching a hammer-on or slide off unlinks the next note', () => {
+  let score = songsterrToScore(alphaTab, {
+    title: 't',
+    tracks: [{ data: { tuning: [64, 59, 55, 50, 45, 40], measures: [{ signature: [4, 4], voices: [{ beats: [
+      { type: 4, duration: [1, 4], notes: [{ string: 2, fret: 5, hp: true }] },
+      { type: 4, duration: [1, 4], notes: [{ string: 2, fret: 7 }] },
+      { type: 4, duration: [1, 4], notes: [{ string: 2, fret: 5, slide: 'legato' }] },
+      { type: 4, duration: [1, 4], notes: [{ string: 2, fret: 9 }] }
+    ] }] }] } }]
+  }).score;
+  const at = (beat) => ({ track: 0, staff: 0, bar: 0, voice: 0, beat, string: 4 });
+  ed.toggleEffect(m, score, at(0), 'hammer');
+  ed.toggleEffect(m, score, at(2), 'slide');
+  score = rebuild(score);
+  const beats = ed.voiceOf(score, at(0)).beats;
+  assert.equal(beats[1].notes[0].isHammerPullDestination, false);
+  assert.equal(beats[3].notes[0].slideOrigin, null);
+});
