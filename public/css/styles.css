@@ -357,6 +357,7 @@ body.horizontal .paper-frame { max-width: none; }
 /* alphaTab playback highlighting */
 .at-cursor-bar { background: rgba(155, 44, 44, 0.045); }
 .at-cursor-beat { background: rgba(155, 44, 44, 0.8); width: 2px; }
+body.cursor-idle:not(.editing) .at-cursor-bar, body.cursor-idle:not(.editing) .at-cursor-beat { visibility: hidden; }
 .at-highlight * { fill: #9b2c2c; stroke: #9b2c2c; }
 .at-selection div { background: rgba(155, 44, 44, 0.12); }
 

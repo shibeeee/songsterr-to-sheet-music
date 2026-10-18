@@ -35,6 +35,8 @@
 // E A D G, moves notes that are too low up an octave (by default together
 // with the rest of their phrase, so a riff keeps its shape), then optimizes.
 
+import { shortTrackName } from './convert.js';
+
 export const MAX_FRET = 24;
 export const BASS_4_STANDARD = [43, 38, 33, 28]; // G D A E (high to low)
 export const FINGERING_STYLES = ['fewest', 'low', 'fretted'];
@@ -639,7 +641,7 @@ export function convertToFourStringBass(m, score, trackIndex, { maxFret = MAX_FR
 
   const track = score.tracks[trackIndex];
   track.name = track.name.replace(/\b([56])[- ]?strings?\b/i, '4-string');
-  track.shortName = track.name.slice(0, 10);
+  track.shortName = shortTrackName(track.name);
 
   // Then find comfortable positions for the whole track. Tie, hammer-on and
   // slide links still point at the right notes from before the retune.

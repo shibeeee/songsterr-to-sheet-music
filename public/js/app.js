@@ -374,6 +374,7 @@ async function showScore(score, warnings, { preferredTrack = 0, explicitTrack = 
   state.sourceUrl = sourceUrl;
   state.key = key;
   state.score = score;
+  document.body.classList.add('cursor-idle'); // no playback cursor until there's playback
   state.undo = [];
   state.redo = [];
   state.dirty = !!restored;
@@ -652,6 +653,19 @@ function applySettings() {
   s.notation.elements.set(alphaTab.NotationElement.EffectChordNames, options.chords);
   s.notation.elements.set(alphaTab.NotationElement.EffectTempo, options.tempo);
   s.notation.elements.set(alphaTab.NotationElement.EffectDynamics, options.dynamics);
+  if (state.score) {
+    // Full instrument names on the first line, short ones ("El. Gtr.") after, like a printed score.
+    const sheet = state.score.stylesheet;
+    const { TrackNameMode, TrackNameOrientation, TrackNamePolicy } = alphaTab.model;
+    sheet.firstSystemTrackNameMode = TrackNameMode.FullName;
+    // Sideways on narrow screens, where every bit of width counts.
+    const wide = $('stage').clientWidth >= 700;
+    sheet.firstSystemTrackNameOrientation = wide ? TrackNameOrientation.Horizontal : TrackNameOrientation.Vertical;
+    sheet.otherSystemsTrackNameMode = TrackNameMode.ShortName;
+    sheet.otherSystemsTrackNameOrientation = wide ? TrackNameOrientation.Horizontal : TrackNameOrientation.Vertical;
+    sheet.singleTrackTrackNamePolicy = TrackNamePolicy.FirstSystem;
+    sheet.multiTrackTrackNamePolicy = TrackNamePolicy.AllSystems;
+  }
   document.body.classList.toggle('horizontal', options.layout === 'horizontal');
 }
 
@@ -1298,6 +1312,7 @@ api.playerReady.on(() => {
 });
 api.playerStateChanged.on((e) => {
   const playing = e.state === alphaTab.synth.PlayerState.Playing;
+  if (playing) document.body.classList.remove('cursor-idle');
   // Paused or stopped: a good moment to bring in the better sounds (after a
   // short wait, so a quick pause-and-resume isn't interrupted).
   if (!playing) swapToBetterWhenQuiet(1500);
@@ -1306,12 +1321,20 @@ api.playerStateChanged.on((e) => {
 });
 let lastTick = 0;
 let userSeekAt = 0; // clicks in the music and the seek bar also move the position back
-$('score').addEventListener('pointerdown', () => (userSeekAt = Date.now()), true);
+$('score').addEventListener(
+  'pointerdown',
+  () => {
+    userSeekAt = Date.now();
+    document.body.classList.remove('cursor-idle');
+  },
+  true
+);
 api.playerPositionChanged.on((e) => {
   // A loop starting over shows up as the position jumping backwards while playing.
   const jumpedBack = e.currentTick + 960 < lastTick;
   if (jumpedBack && options.loop && isPlaying() && Date.now() - userSeekAt > 600) onLoopRepeat();
   lastTick = e.currentTick;
+  if (e.currentTick > 120) document.body.classList.remove('cursor-idle'); // the player reports tick 1 on load
   if (e.endTime && Math.abs(e.endTime - state.endTime) > 500) {
     state.endTime = e.endTime;
     updateSongMeta();

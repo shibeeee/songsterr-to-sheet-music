@@ -231,11 +231,39 @@ function applyTempo(m, score, tracks) {
 // Tracks
 // ---------------------------------------------------------------------------
 
+const ABBREVIATIONS = [
+  [/\bacoustic\b/gi, 'Ac.'],
+  [/\belectric\b/gi, 'El.'],
+  [/\bdistortion\b/gi, 'Dist.'],
+  [/\boverdriven?\b/gi, 'Ovd.'],
+  [/\bclean\b/gi, 'Cl.'],
+  [/\brhythm\b/gi, 'Rhy.'],
+  [/\bguitar\b/gi, 'Gtr.'],
+  [/\bkeyboards?\b/gi, 'Kbd.'],
+  [/\bpiano\b/gi, 'Pno.'],
+  [/\bvocals?\b/gi, 'Voc.'],
+  [/\bstrings\b/gi, 'Str.'],
+  [/\bsynthesi[sz]er\b/gi, 'Synth'],
+  [/\bdrums?\b/gi, 'Dr.'],
+  [/\bpercussion\b/gi, 'Perc.']
+];
+
+/** A short label for the staves after the first system, like "El. Gtr." for "Electric Guitar". */
+export function shortTrackName(name) {
+  const text = String(name || '').trim();
+  if (text.length <= 10) return text;
+  let short = text;
+  for (const [pattern, abbreviation] of ABBREVIATIONS) short = short.replace(pattern, abbreviation);
+  short = short.replace(/\s+/g, ' ').trim();
+  if (short.length > 14) short = short.replace(/\s*\([^)]*\)/g, '').trim(); // drop "(4-string)" and the like
+  return short.length <= 14 ? short : `${short.slice(0, 12).trim()}.`;
+}
+
 function buildTrack(m, score, entry, ctx) {
   const { data, meta } = entry;
   const track = new m.Track();
   track.name = meta.title || meta.name || data.name || `Track ${ctx.trackIndex + 1}`;
-  track.shortName = track.name.slice(0, 10);
+  track.shortName = shortTrackName(track.name);
   score.addTrack(track);
 
   const staff = new m.Staff();

@@ -9,6 +9,8 @@
 //   { track, staff, bar, voice, beat, string }
 // `string` uses alphaTab numbering: 1 is the lowest-pitched string.
 
+import { shortTrackName } from './convert.js';
+
 export const DURATIONS = [1, 2, 4, 8, 16, 32, 64];
 
 export const NOTE_EFFECTS = {
@@ -513,5 +515,5 @@ export function renameTrack(score, trackIndex, name) {
   const track = score.tracks[trackIndex];
   if (!track) return;
   track.name = String(name).trim() || track.name;
-  track.shortName = track.name.slice(0, 10);
+  track.shortName = shortTrackName(track.name);
 }
