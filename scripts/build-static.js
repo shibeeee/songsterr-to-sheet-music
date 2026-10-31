@@ -3,6 +3,7 @@
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bundleTranscriber } from './bundle-transcriber.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const OUT = join(ROOT, 'dist');
@@ -32,6 +33,9 @@ if (soundFiles.includes('GeneralUser-GS.sf2')) {
 } else {
   console.warn('Better sounds not found; run "npm run fetch-sounds" first. The site will use the small set.');
 }
+
+// The audio transcriber (Basic Pitch model in a worker).
+await cp(await bundleTranscriber(), join(OUT, 'vendor', 'transcriber'), { recursive: true });
 
 // Tell GitHub Pages not to run Jekyll over the files.
 await writeFile(join(OUT, '.nojekyll'), '');

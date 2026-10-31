@@ -15,6 +15,7 @@ const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const PUBLIC_DIR = join(ROOT, 'public');
 const ALPHATAB_DIR = join(ROOT, 'node_modules', '@coderline', 'alphatab', 'dist');
 const SOUNDS_DIR = join(ROOT, '.cache', 'sounds'); // filled by `npm run fetch-sounds`
+const TRANSCRIBER_DIR = join(ROOT, '.cache', 'transcriber'); // built by scripts/bundle-transcriber.js
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
 
@@ -108,6 +109,7 @@ export function createAppServer() {
     if (path === null) return send(res, 400, 'Bad request', 'text/plain');
     if (path.startsWith('/vendor/sounds/')) return serveFile(res, SOUNDS_DIR, path.slice('/vendor/sounds/'.length));
     if (path.startsWith('/vendor/alphatab/')) return serveFile(res, ALPHATAB_DIR, path.slice('/vendor/alphatab/'.length));
+    if (path.startsWith('/vendor/transcriber/')) return serveFile(res, TRANSCRIBER_DIR, path.slice('/vendor/transcriber/'.length));
     return serveFile(res, PUBLIC_DIR, path);
   });
 }

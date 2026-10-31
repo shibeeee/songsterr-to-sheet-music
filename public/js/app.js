@@ -17,6 +17,7 @@ import {
 import { setupBookmarklet, listenForBookmarklet } from './bookmarklet.js';
 import { snapshot, restore, rebuildScore } from './editor.js';
 import { createEditUI } from './edit-ui.js';
+import { createTranscribeUI } from './transcribe-ui.js';
 import { SOUND_SETS, fetchSound, isSoundCached } from './sound.js';
 import { optimizeFingering, convertToFourStringBass, canConvertToFourString, fourStringBlocker } from './fingering.js';
 
@@ -299,6 +300,7 @@ function submitQuery(text) {
   const value = text.trim();
   if (!value) return;
   if (isSongsterrLink(value)) openLink(value);
+  else if (transcribeUI.isYouTubeLink(value)) transcribeUI.open('youtube', { link: value });
   else runSearch(value);
 }
 
@@ -331,7 +333,13 @@ function recordScoreInHistory(push = true) {
   else history.replaceState({ view: 'score' }, '', url);
 }
 
+const AUDIO_FILE = /\.(mp3|wav|wave|m4a|aac|ogg|oga|opus|flac|aif|aiff|webm|mp4|m4v|mov)$/i;
+
 async function loadFile(file) {
+  if (/^(audio|video)\//.test(file.type) || AUDIO_FILE.test(file.name)) {
+    transcribeUI.open('file', { file });
+    return;
+  }
   ++loadToken;
   setStatus(`Opening ${file.name}...`, 'loading');
   try {
@@ -427,6 +435,7 @@ async function showScore(score, warnings, { preferredTrack = 0, explicitTrack = 
   setStatus(null, 'info', $('viewer-status'));
 
   $('export-json').parentElement.hidden = !state.bundle;
+  transcribeUI.scoreShown(bundle);
   updateSongHead();
   syncRange();
   buildTrackList();
@@ -935,6 +944,41 @@ function afterHistoryChange() {
   updateSongHead();
   editUI.refreshPanel();
   scheduleSave();
+}
+
+const transcribeUI = createTranscribeUI({
+  $,
+  asset,
+  toast: (message) => toast(message),
+  show: async (bundle) => {
+    ++loadToken;
+    try {
+      const shown = await showScore(...(await convertForShow(bundle)));
+      if (shown) recordScoreInHistory();
+      return shown;
+    } catch (err) {
+      console.error(err);
+      toast(`Couldn't write out the music: ${err.message || err}`);
+      return false;
+    }
+  },
+  isDirty: () => state.dirty,
+  home: () => {
+    showView('home');
+    history.pushState({ view: 'home' }, '', window.location.pathname);
+    document.querySelector('.from-audio')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+});
+
+/**
+ * A transcription's score as showScore's arguments. Its notes were placed by
+ * a program rather than a person, so the fingering is optimized first.
+ */
+async function convertForShow(bundle) {
+  let { score, warnings } = songsterrToScore(alphaTab, bundle);
+  score.tracks.forEach((track, i) => optimizeFingering(alphaTab.model, score, i, { maxFret: options.maxFret, style: options.fingerStyle }));
+  score = rebuildScore(alphaTab, score, api.settings);
+  return [score, warnings, { bundle, key: null }];
 }
 
 const editUI = createEditUI({
@@ -1530,6 +1574,13 @@ for (const input of document.querySelectorAll('.file-input')) {
 }
 
 $('demo-btn').addEventListener('click', () => loadDemo());
+$('source-youtube').addEventListener('click', () => transcribeUI.open('youtube'));
+$('source-mic').addEventListener('click', () => transcribeUI.open('mic'));
+document.querySelector('.audio-file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) transcribeUI.open('file', { file });
+  e.target.value = '';
+});
 $('back-btn').addEventListener('click', () => {
   showView('score', { rerender: true });
   recordScoreInHistory();
@@ -1643,7 +1694,7 @@ $('opt-lownotes').addEventListener('change', (e) => setOption('lowNotes', e.targ
 for (const input of [$('home-search-input'), $('top-search-input')]) {
   input.addEventListener('paste', (e) => {
     const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
-    if (!isSongsterrLink(text.trim())) return;
+    if (!isSongsterrLink(text.trim()) && !transcribeUI.isYouTubeLink(text.trim())) return;
     e.preventDefault();
     input.value = text.trim();
     submitQuery(input.value);

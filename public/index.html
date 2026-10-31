@@ -13,6 +13,10 @@
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <defs>
       <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></symbol>
+      <symbol id="i-youtube" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="3.5" /><path d="M10 9.2v5.6l4.8-2.8z" class="fill" /></symbol>
+      <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5.5l11-2V16" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="17.5" cy="16" r="2.5" /></symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0" /><path d="M12 17.5V21" /></symbol>
+      <symbol id="i-record" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" class="fill" /></symbol>
       <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /></symbol>
       <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" class="fill" /></symbol>
       <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5h3v14H8zM13 5h3v14h-3z" class="fill" /></symbol>
@@ -53,7 +57,7 @@
       <label class="btn ghost" title="Open a Guitar Pro, MusicXML or saved JSON file">
         <svg class="icon" aria-hidden="true"><use href="#i-file" /></svg>
         <span class="label">Open file</span>
-        <input class="file-input" type="file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml,.mxl,.json,.atex,.alphatex,.txt" />
+        <input class="file-input" type="file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml,.mxl,.json,.atex,.alphatex,.txt,audio/*,.mp3,.wav,.m4a,.ogg,.flac" />
       </label>
       <button type="button" class="btn ghost options-toggle" id="sidebar-toggle" aria-controls="sidebar" aria-expanded="false">
         <svg class="icon" aria-hidden="true"><use href="#i-sliders" /></svg>
@@ -82,9 +86,29 @@
         <ol id="results" class="results" hidden aria-label="Search results"></ol>
 
         <p class="alt">
-          Or <label class="linklike">open a file<input class="file-input" type="file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml,.mxl,.json,.atex,.alphatex,.txt" /></label>
+          Or <label class="linklike">open a file<input class="file-input" type="file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml,.mxl,.json,.atex,.alphatex,.txt,audio/*,.mp3,.wav,.m4a,.ogg,.flac" /></label>
           (Guitar Pro, MusicXML, saved Songsterr data), or <button type="button" class="linklike" id="demo-btn">look at an example</button>.
         </p>
+
+        <section class="from-audio" aria-labelledby="from-audio-title">
+          <h2 id="from-audio-title">Or from a recording</h2>
+          <p>Hear a song you want to learn? Turn the recording into tab and notation, free, right in your browser.</p>
+          <div class="audio-sources">
+            <button type="button" class="source-card" id="source-youtube">
+              <svg class="icon" aria-hidden="true"><use href="#i-youtube" /></svg>
+              <strong>YouTube video</strong><span>Paste a link; it listens while the video plays</span>
+            </button>
+            <label class="source-card">
+              <svg class="icon" aria-hidden="true"><use href="#i-music" /></svg>
+              <strong>Audio file</strong><span>MP3, WAV, M4A or a video file</span>
+              <input class="audio-file-input" type="file" accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.flac,.aac,.webm,.mp4" />
+            </label>
+            <button type="button" class="source-card" id="source-mic">
+              <svg class="icon" aria-hidden="true"><use href="#i-mic" /></svg>
+              <strong>Record yourself</strong><span>Play it into the microphone</span>
+            </button>
+          </div>
+        </section>
 
         <p id="back-to-score" class="back-to-score" hidden>
           <button type="button" class="linklike" id="back-btn"><svg class="icon" aria-hidden="true"><use href="#i-back" /></svg><span></span></button>
@@ -244,6 +268,53 @@
           </p>
           <button type="button" class="btn ghost block" id="edit-revert">Undo all changes</button>
         </section>
+
+        <details class="panel" data-panel="transcription" id="tx-panel" open hidden>
+          <summary><h2>Transcription</h2></summary>
+          <audio id="tx-audio" controls preload="metadata"></audio>
+          <p class="panel-note">Compare with the recording, then adjust. Changes rewrite the music (your edits to it are lost).</p>
+          <div class="field">
+            <label for="tx-mode">Instrument</label>
+            <select id="tx-mode">
+              <option value="guitar">Guitar (chords and notes)</option>
+              <option value="melody">Melody or solo</option>
+              <option value="bass">Bass</option>
+              <option value="band">Guitar and bass</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="tx-bpm">Tempo <output id="tx-bpm-note"></output></label>
+            <div class="tempo-row">
+              <input type="number" id="tx-bpm" min="30" max="300" step="1" />
+              <button type="button" class="btn small" id="tx-half" title="Half as fast (if the notes look too short)">½</button>
+              <button type="button" class="btn small" id="tx-double" title="Twice as fast (if the notes look too long)">×2</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="tx-meter">Beats per bar</label>
+            <select id="tx-meter"><option value="4">4</option><option value="3">3</option><option value="2">2</option></select>
+          </div>
+          <div class="field">
+            <span class="field-label">Bar lines</span>
+            <div class="tempo-row">
+              <button type="button" class="btn small" id="tx-shift-left" title="Move the bar lines one beat earlier">◀ Earlier</button>
+              <button type="button" class="btn small" id="tx-shift-right" title="Move the bar lines one beat later">Later ▶</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="tx-grid">Shortest note</label>
+            <select id="tx-grid"><option value="16">Sixteenth</option><option value="8">Eighth (simpler)</option></select>
+          </div>
+          <div class="field">
+            <label for="tx-sensitivity">Notes to keep</label>
+            <select id="tx-sensitivity">
+              <option value="more">More (quiet notes too)</option>
+              <option value="normal">Normal</option>
+              <option value="fewer">Fewer (only clear notes)</option>
+            </select>
+          </div>
+          <button type="button" class="btn block" id="tx-new">Transcribe another recording</button>
+        </details>
 
         <details class="panel" data-panel="tracks" open>
           <summary><h2>Tracks</h2></summary>
@@ -452,6 +523,76 @@
       </div>
     </section>
   </main>
+
+  <dialog id="audio-dialog" class="dialog audio-dialog" aria-labelledby="audio-title">
+    <div class="dialog-head">
+      <h2 id="audio-title">Turn a recording into music</h2>
+      <button type="button" class="icon-btn" id="audio-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#i-close" /></svg></button>
+    </div>
+
+    <div id="audio-youtube" class="audio-step" hidden>
+      <form id="youtube-form" class="youtube-form">
+        <label for="youtube-input" class="visually-hidden">YouTube link</label>
+        <input id="youtube-input" type="url" placeholder="https://www.youtube.com/watch?v=…" spellcheck="false" />
+        <button type="submit" class="btn">Load video</button>
+      </form>
+      <div id="youtube-frame" class="youtube-frame" hidden></div>
+      <ol class="audio-steps-list" id="youtube-how">
+        <li>Press <strong>Start listening</strong>. Your browser asks what to share: choose <strong>this tab</strong> and keep <strong>Share tab audio</strong> on.</li>
+        <li>Play the part you want to learn. Shorter is faster and cleaner.</li>
+        <li>Press <strong>Stop</strong>.</li>
+      </ol>
+      <p class="panel-note" id="youtube-unsupported" hidden>Listening to a video works in Chrome and Edge on a computer. On this browser, open an audio file you have, or play the video on another device near this one and use <button type="button" class="linklike" id="switch-to-mic">Record yourself</button>.</p>
+    </div>
+
+    <div id="audio-mic" class="audio-step" hidden>
+      <p>Play or sing into the microphone. Headphones off, close to the sound, quiet room. For a song on another device, hold it near the microphone.</p>
+    </div>
+
+    <div id="audio-recorder" class="recorder" hidden>
+      <button type="button" class="btn primary" id="record-start"><svg class="icon" aria-hidden="true"><use href="#i-record" /></svg><span>Start listening</span></button>
+      <button type="button" class="btn" id="record-stop" hidden><svg class="icon" aria-hidden="true"><use href="#i-stop" /></svg><span>Stop</span></button>
+      <span class="record-time" id="record-time" hidden>0:00</span>
+      <span class="level" id="record-level" hidden aria-hidden="true"><span></span></span>
+      <span class="panel-note" id="record-hint" aria-live="polite"></span>
+    </div>
+
+    <div id="audio-settings" class="audio-step" hidden>
+      <div class="recording-info">
+        <p><strong id="recording-name">Recording</strong> <span id="recording-length"></span></p>
+        <audio id="recording-preview" controls preload="metadata"></audio>
+      </div>
+      <div class="settings-grid">
+        <label class="field">Instrument
+          <select id="tx-mode-start">
+            <option value="guitar">Guitar (chords and notes)</option>
+            <option value="melody">Melody or solo</option>
+            <option value="bass">Bass</option>
+            <option value="band">Guitar and bass</option>
+          </select>
+        </label>
+        <label class="field">Beats per bar
+          <select id="tx-meter-start">
+            <option value="4">4 (most songs)</option>
+            <option value="3">3 (waltz)</option>
+            <option value="2">2</option>
+          </select>
+        </label>
+        <label class="field">From <input type="text" id="tx-from" inputmode="numeric" placeholder="0:00" /></label>
+        <label class="field">To <input type="text" id="tx-to" inputmode="numeric" placeholder="end" /></label>
+      </div>
+      <p class="panel-note">Works best on one instrument at a time, like a guitar lesson or a solo. Full band mixes give a rougher result to tidy up in the editor.</p>
+      <div class="tx-progress" id="tx-progress" hidden>
+        <div class="bar"><span></span></div>
+        <span id="tx-progress-text" aria-live="polite"></span>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="tx-cancel" hidden>Cancel</button>
+        <button type="button" class="btn primary" id="tx-start">Write it out</button>
+      </div>
+    </div>
+    <p class="status error" id="audio-error" hidden></p>
+  </dialog>
 
   <dialog id="shortcuts-dialog" class="dialog" aria-labelledby="shortcuts-title">
     <h2 id="shortcuts-title">Keyboard shortcuts</h2>
