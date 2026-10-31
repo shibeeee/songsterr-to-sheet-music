@@ -32,7 +32,7 @@ export function createTranscribeUI(host) {
   const dialog = $('audio-dialog');
   const transcriber = new Transcriber(host.asset('vendor/transcriber/transcriber-worker.js'), host.asset('vendor/transcriber/model/model.json'));
 
-  const flow = { source: null, recorder: null, timer: 0, blob: null, buffer: null, name: '', url: null, busy: false };
+  const flow = { source: null, recorder: null, timer: 0, blob: null, buffer: null, name: '', url: null, busy: false, player: null, videoId: null, stopAt: null };
   // The transcription on screen: its notes and the settings that wrote them.
   let current = null;
 
@@ -46,11 +46,21 @@ export function createTranscribeUI(host) {
     el.hidden = !message;
   }
 
-  function showStep({ youtube = false, mic = false, recorder = false, settings = false }) {
+  function hint(text) {
+    $('record-hint').textContent = text || '';
+  }
+
+  /** Which parts of the dialog are visible. */
+  function layout({ youtube = false, mic = false, info = false, options = false, trim = false, recorder = false, actions = false, unsupported = false }) {
     $('audio-youtube').hidden = !youtube;
     $('audio-mic').hidden = !mic;
+    $('recording-info').hidden = !info;
+    $('tx-options').hidden = !options;
+    $('tx-from-field').hidden = !trim;
+    $('tx-to-field').hidden = !trim;
     $('audio-recorder').hidden = !recorder;
-    $('audio-settings').hidden = !settings;
+    $('tx-actions').hidden = !actions;
+    $('youtube-unsupported').hidden = !unsupported;
   }
 
   function resetRecorderUI() {
@@ -59,7 +69,7 @@ export function createTranscribeUI(host) {
     $('record-stop').hidden = true;
     $('record-time').hidden = true;
     $('record-level').hidden = true;
-    $('record-hint').textContent = '';
+    hint('');
   }
 
   /** Opens the dialog for a source: 'youtube' (with an optional link), 'mic' or 'file'. */
@@ -70,26 +80,60 @@ export function createTranscribeUI(host) {
     showError('');
     resetRecorderUI();
     $('tx-progress').hidden = true;
+    $('tx-from').value = '';
+    $('tx-to').value = '';
     if (!dialog.open) dialog.showModal();
     if (source === 'youtube') {
-      showStep({ youtube: true, recorder: canRecordTab() });
-      $('youtube-unsupported').hidden = canRecordTab();
-      $('youtube-how').hidden = !canRecordTab();
+      const supported = canRecordTab();
+      layout({ youtube: true, options: supported, trim: supported, recorder: supported, unsupported: !supported });
+      $('record-start').querySelector('span').textContent = 'Listen and write it out';
       $('youtube-input').value = link;
       if (link) loadVideo(link);
       else {
-        $('youtube-frame').hidden = true;
-        $('youtube-frame').replaceChildren();
+        clearVideo();
         $('youtube-input').focus();
+        if (supported) hint('Paste a YouTube link above to begin.');
       }
     } else if (source === 'mic') {
-      showStep({ mic: true, recorder: true });
+      layout({ mic: true, options: true, recorder: true });
       if (!canRecordMic()) showError("This browser can't record sound. Try Chrome, Edge, Firefox or Safari.");
       $('record-start').querySelector('span').textContent = 'Start recording';
     } else if (source === 'file' && file) {
-      showStep({});
+      layout({});
       await useAudio(file, file.name.replace(/\.[^.]+$/, ''));
+      layout({ info: true, options: true, trim: true, actions: true });
+      $('tx-start').focus();
     }
+  }
+
+  // YouTube's player API lets the page start the video and notice when it ends.
+  let youtubeApi = null;
+  function loadYouTubeApi() {
+    if (window.YT?.Player) return Promise.resolve(window.YT);
+    if (!youtubeApi) {
+      youtubeApi = new Promise((resolve) => {
+        const previous = window.onYouTubeIframeAPIReady;
+        window.onYouTubeIframeAPIReady = () => {
+          previous?.();
+          resolve(window.YT);
+        };
+        const script = document.createElement('script');
+        script.src = 'https://www.youtube.com/iframe_api';
+        script.onerror = () => resolve(null);
+        document.head.append(script);
+        setTimeout(() => resolve(window.YT?.Player ? window.YT : null), 8000);
+      });
+    }
+    return youtubeApi;
+  }
+
+  function clearVideo() {
+    flow.player?.destroy?.();
+    flow.player = null;
+    const holder = document.createElement('div');
+    holder.id = 'youtube-player';
+    $('youtube-frame').replaceChildren(holder);
+    $('youtube-frame').hidden = true;
   }
 
   async function loadVideo(link) {
@@ -99,15 +143,34 @@ export function createTranscribeUI(host) {
       return;
     }
     showError('');
-    const frame = document.createElement('iframe');
-    frame.src = `https://www.youtube-nocookie.com/embed/${id}?rel=0&playsinline=1`;
-    frame.title = 'YouTube video';
-    frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
-    frame.allowFullscreen = true;
-    $('youtube-frame').replaceChildren(frame);
+    clearVideo();
     $('youtube-frame').hidden = false;
-    $('record-start').querySelector('span').textContent = 'Start listening';
     flow.name = 'YouTube video';
+    flow.videoId = id;
+    const YT = await loadYouTubeApi();
+    if (flow.videoId !== id) return; // another link was loaded meanwhile
+    if (YT) {
+      flow.player = new YT.Player('youtube-player', {
+        host: 'https://www.youtube-nocookie.com',
+        videoId: id,
+        playerVars: { rel: 0, playsinline: 1 },
+        events: {
+          onStateChange: (e) => {
+            // The video ended while listening: that's the whole part.
+            if (e.data === YT.PlayerState.ENDED && flow.recorder) finishRecording();
+          }
+        }
+      });
+    } else {
+      // Without the player API the video still plays; the listener just can't start it.
+      const frame = document.createElement('iframe');
+      frame.src = `https://www.youtube-nocookie.com/embed/${id}?rel=0&playsinline=1`;
+      frame.title = 'YouTube video';
+      frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+      frame.allowFullscreen = true;
+      $('youtube-frame').replaceChildren(frame);
+    }
+    if (canRecordTab()) hint('Press Listen and write it out. When your browser asks, choose this tab and keep "Share tab audio" on.');
     // The video's title, for the score (YouTube allows this lookup from any page).
     try {
       const res = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${id}`)}`);
@@ -122,26 +185,58 @@ export function createTranscribeUI(host) {
 
   async function startRecording() {
     showError('');
+    const youtube = flow.source === 'youtube';
+    let from = 0;
+    let to = null;
+    if (youtube) {
+      if ($('youtube-frame').hidden) {
+        if (youtubeId($('youtube-input').value)) await loadVideo($('youtube-input').value);
+        else {
+          showError('Paste a YouTube link first.');
+          return;
+        }
+      }
+      from = parseTime($('tx-from').value) ?? 0;
+      to = parseTime($('tx-to').value);
+      if (!Number.isFinite(from) || (to !== null && (!Number.isFinite(to) || to <= from))) {
+        showError('Check the From and To times (like 0:30 and 1:15).');
+        return;
+      }
+      hint('Your browser is asking what to share: choose this tab and keep "Share tab audio" on.');
+    }
     $('record-start').disabled = true;
     try {
-      flow.recorder = flow.source === 'youtube' ? await startTabRecording() : await startMicRecording();
+      flow.recorder = youtube ? await startTabRecording() : await startMicRecording();
     } catch (err) {
       $('record-start').disabled = false;
+      hint('');
       const denied = err?.name === 'NotAllowedError' || err?.name === 'SecurityError';
       showError(
         denied
-          ? flow.source === 'youtube'
-            ? 'Sharing was cancelled. Press Start listening again and choose this tab, with "Share tab audio" on.'
+          ? youtube
+            ? 'Sharing was cancelled. Press Listen and write it out again, choose this tab, and keep "Share tab audio" on.'
             : 'The microphone was blocked. Allow it in the address bar, then try again.'
           : err.message || String(err)
       );
       return;
     }
+    flow.stopAt = to;
+    const player = youtube ? flow.player : null;
+    if (player?.playVideo) {
+      player.seekTo(from, true);
+      player.playVideo();
+    }
     $('record-start').hidden = true;
     $('record-stop').hidden = false;
     $('record-time').hidden = false;
     $('record-level').hidden = false;
-    $('record-hint').textContent = flow.source === 'youtube' ? 'Now play the video. Press Stop when the part is over.' : 'Recording. Press Stop when you are done.';
+    hint(
+      youtube
+        ? player?.playVideo
+          ? `Listening while the video plays. It stops by itself ${to ? `at ${formatTime(to)}` : 'at the end'}, or press Stop.`
+          : 'Listening. Press play on the video, then Stop when the part is over.'
+        : 'Recording. Press Stop when you are done.'
+    );
     flow.recorder.onEnd(() => finishRecording());
     let quiet = 0;
     const tick = () => {
@@ -150,8 +245,11 @@ export function createTranscribeUI(host) {
       $('record-level').firstElementChild.style.width = `${Math.round(level * 100)}%`;
       $('record-time').textContent = formatTime(flow.recorder.seconds());
       quiet = level > 0.02 ? 0 : quiet + 1;
-      if (quiet > 120 && flow.source === 'youtube') $('record-hint').textContent = 'No sound yet. Is the video playing, with "Share tab audio" on?';
-      else if (quiet === 0) $('record-hint').textContent = 'Hearing it. Press Stop when the part is over.';
+      if (youtube && quiet === 240) hint('No sound yet. Is the video playing? If not, press play on it.');
+      if (player?.getCurrentTime && flow.stopAt && player.getCurrentTime() >= flow.stopAt) {
+        finishRecording();
+        return;
+      }
       flow.timer = requestAnimationFrame(tick);
     };
     tick();
@@ -170,6 +268,7 @@ export function createTranscribeUI(host) {
     const recorder = flow.recorder;
     const done = stopRecording();
     if (!done) return;
+    flow.player?.pauseVideo?.();
     resetRecorderUI();
     const seconds = recorder.seconds();
     const blob = await done;
@@ -177,10 +276,9 @@ export function createTranscribeUI(host) {
       showError('That recording is too short. Record at least a few seconds.');
       return;
     }
-    // Leave the video's own player paused: there is nothing more to hear.
-    $('youtube-frame').replaceChildren();
-    $('youtube-frame').hidden = true;
-    await useAudio(blob, flow.source === 'youtube' ? flow.name : 'Recording');
+    if (!(await useAudio(blob, flow.source === 'youtube' ? flow.name : 'Recording'))) return;
+    // The part to transcribe was chosen before listening: write it out straight away.
+    await startTranscription({ trim: false });
   }
 
   async function useAudio(blob, name) {
@@ -190,7 +288,7 @@ export function createTranscribeUI(host) {
       flow.buffer = await decodeAudio(blob);
     } catch (err) {
       showError(err.message);
-      return;
+      return false;
     } finally {
       flow.busy = false;
     }
@@ -201,30 +299,29 @@ export function createTranscribeUI(host) {
     $('recording-name').textContent = flow.name;
     $('recording-length').textContent = `(${formatTime(flow.buffer.duration)})`;
     $('recording-preview').src = flow.url;
-    $('tx-from').value = '';
-    $('tx-to').value = '';
-    showStep({ settings: true });
-    $('tx-start').disabled = false;
-    $('tx-start').focus();
+    return true;
   }
 
-  async function startTranscription() {
-    const from = parseTime($('tx-from').value) ?? 0;
-    const to = parseTime($('tx-to').value) ?? flow.buffer.duration;
+  async function startTranscription({ trim = true } = {}) {
+    const from = trim ? parseTime($('tx-from').value) ?? 0 : 0;
+    const to = trim ? parseTime($('tx-to').value) ?? flow.buffer.duration : flow.buffer.duration;
     if (!Number.isFinite(from) || !Number.isFinite(to) || to - from < 1) {
       showError('Check the From and To times (like 0:30 and 1:15), at least a second apart.');
       return;
     }
     showError('');
     flow.busy = true;
-    $('tx-start').disabled = true;
+    $('tx-actions').hidden = false;
+    $('tx-start').hidden = true;
     $('tx-cancel').hidden = false;
     $('tx-progress').hidden = false;
+    $('record-start').disabled = true;
     const setProgress = (value, text) => {
       $('tx-progress').querySelector('.bar span').style.width = `${Math.round(value * 100)}%`;
       $('tx-progress-text').textContent = text;
     };
     setProgress(0, 'Getting the listener ready…');
+    hint('');
     const started = performance.now();
     const settings = { mode: $('tx-mode-start').value, beatsPerBar: Number($('tx-meter-start').value), sensitivity: 'normal', grid: 16, barShift: 0, bpm: null };
     try {
@@ -234,20 +331,22 @@ export function createTranscribeUI(host) {
         const elapsed = (performance.now() - started) / 1000;
         // The first part includes warming up, so estimate only after that.
         const left = value > 0.2 ? (elapsed / value) * (1 - value) : null;
-        setProgress(value, `Listening… ${Math.round(value * 100)}%${left != null && left > 3 ? `, about ${left < 60 ? `${Math.ceil(left)} s` : `${Math.ceil(left / 60)} min`} left` : ''}`);
+        setProgress(value, `Writing out the notes… ${Math.round(value * 100)}%${left != null && left > 3 ? `, about ${left < 60 ? `${Math.ceil(left)} s` : `${Math.ceil(left / 60)} min`} left` : ''}`);
       });
-      if (!result.notes.length) throw new Error("No notes were heard. Check that the recording has sound, or try a louder part.");
+      if (!result.notes.length) throw new Error('No notes were heard. Check that the recording has sound, or try a louder part.');
       current = { id: result.id, notes: result.notes, settings, name: flow.name, url: flow.url, length, backend: result.backend, detectedBpm: null };
       flow.url = null; // the panel's player owns it now
-      setProgress(1, 'Writing the music…');
+      setProgress(1, 'Laying out the music…');
       await render();
       dialog.close();
     } catch (err) {
       if (!err.cancelled) showError(`Couldn't transcribe this recording: ${err.message || err}`);
     } finally {
       flow.busy = false;
-      $('tx-start').disabled = false;
+      $('record-start').disabled = false;
+      $('tx-start').hidden = false;
       $('tx-cancel').hidden = true;
+      $('tx-actions').hidden = flow.source !== 'file';
       if (dialog.open) $('tx-progress').hidden = true;
     }
   }
@@ -333,7 +432,8 @@ export function createTranscribeUI(host) {
   dialog.addEventListener('close', () => {
     stopRecording(true);
     if (flow.busy) transcriber.cancel();
-    $('youtube-frame').replaceChildren();
+    clearVideo();
+    flow.videoId = null;
     resetRecorderUI();
   });
   $('youtube-form').addEventListener('submit', (e) => {
@@ -344,7 +444,7 @@ export function createTranscribeUI(host) {
   $('switch-to-mic').addEventListener('click', () => open('mic'));
   $('record-start').addEventListener('click', startRecording);
   $('record-stop').addEventListener('click', finishRecording);
-  $('tx-start').addEventListener('click', startTranscription);
+  $('tx-start').addEventListener('click', () => startTranscription());
   $('tx-cancel').addEventListener('click', () => {
     transcriber.cancel();
     $('tx-progress').hidden = true;

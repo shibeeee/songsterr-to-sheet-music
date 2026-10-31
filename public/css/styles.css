@@ -453,12 +453,16 @@ body.cursor-idle:not(.editing) .at-cursor-bar, body.cursor-idle:not(.editing) .a
 .audio-step > p { margin: 0 0 12px; color: var(--ink-2); }
 .youtube-form { display: flex; gap: 8px; margin-bottom: 12px; }
 .youtube-form input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel); }
-.youtube-frame { position: relative; aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; background: #000; margin-bottom: 12px; }
+.youtube-frame { position: relative; aspect-ratio: 16 / 9; width: min(100%, calc(38vh * 16 / 9)); margin: 0 auto 14px; border-radius: 8px; overflow: hidden; background: #000; }
 .youtube-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-.audio-steps-list { margin: 0 0 12px; padding-left: 20px; color: var(--ink-2); font-size: 14px; display: grid; gap: 4px; }
-.recorder { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 6px 0 4px; }
+.recorder { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 14px 0 0; }
+.btn.big { height: 44px; padding: 0 18px; font-size: 15px; font-weight: 600; gap: 8px; }
+.record-hint { margin: 8px 0 0; color: var(--ink-2); font-size: 14px; }
+.record-hint:empty { display: none; }
+.audio-dialog > .status.error:not(#audio-error) { margin: 0 0 12px; }
 .recorder .btn .icon { width: 16px; height: 16px; }
-#record-start .icon { color: #d33; }
+#record-start .icon { color: #e03131; }
+#record-start .icon circle { fill: currentColor; stroke: none; }
 .record-time { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 42px; }
 .level { width: 120px; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
 .level span { display: block; height: 100%; width: 0; background: #2f9e44; transition: width 0.08s linear; }

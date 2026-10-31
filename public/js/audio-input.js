@@ -47,6 +47,7 @@ function recordStream(stream, cleanup = () => {}) {
   recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
 
   const ctx = new AudioContext();
+  ctx.resume().catch(() => {}); // created after an await, so make sure it runs
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 1024;
   ctx.createMediaStreamSource(audioStream).connect(analyser);

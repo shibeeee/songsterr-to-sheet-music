@@ -530,66 +530,64 @@
       <button type="button" class="icon-btn" id="audio-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#i-close" /></svg></button>
     </div>
 
+    <p class="status error" id="youtube-unsupported" hidden>
+      This browser can't listen to a video playing in a page. Open this site in <strong>Chrome</strong> or <strong>Edge</strong> on a computer, or use an audio file you have, or play the video on another device near this one and choose <button type="button" class="linklike" id="switch-to-mic">Record yourself</button>.
+    </p>
+
     <div id="audio-youtube" class="audio-step" hidden>
       <form id="youtube-form" class="youtube-form">
         <label for="youtube-input" class="visually-hidden">YouTube link</label>
-        <input id="youtube-input" type="url" placeholder="https://www.youtube.com/watch?v=…" spellcheck="false" />
+        <input id="youtube-input" type="url" placeholder="Paste a YouTube link" spellcheck="false" />
         <button type="submit" class="btn">Load video</button>
       </form>
-      <div id="youtube-frame" class="youtube-frame" hidden></div>
-      <ol class="audio-steps-list" id="youtube-how">
-        <li>Press <strong>Start listening</strong>. Your browser asks what to share: choose <strong>this tab</strong> and keep <strong>Share tab audio</strong> on.</li>
-        <li>Play the part you want to learn. Shorter is faster and cleaner.</li>
-        <li>Press <strong>Stop</strong>.</li>
-      </ol>
-      <p class="panel-note" id="youtube-unsupported" hidden>Listening to a video works in Chrome and Edge on a computer. On this browser, open an audio file you have, or play the video on another device near this one and use <button type="button" class="linklike" id="switch-to-mic">Record yourself</button>.</p>
+      <div id="youtube-frame" class="youtube-frame" hidden><div id="youtube-player"></div></div>
     </div>
 
     <div id="audio-mic" class="audio-step" hidden>
-      <p>Play or sing into the microphone. Headphones off, close to the sound, quiet room. For a song on another device, hold it near the microphone.</p>
+      <p>Play or sing into the microphone: close to the sound, in a quiet room. For a song on another device, hold it near the microphone.</p>
+    </div>
+
+    <div id="recording-info" class="recording-info" hidden>
+      <p><strong id="recording-name">Recording</strong> <span id="recording-length"></span></p>
+      <audio id="recording-preview" controls preload="metadata"></audio>
+    </div>
+
+    <div id="tx-options" class="settings-grid" hidden>
+      <label class="field">Instrument
+        <select id="tx-mode-start">
+          <option value="guitar">Guitar (chords and notes)</option>
+          <option value="melody">Melody or solo</option>
+          <option value="bass">Bass</option>
+          <option value="band">Guitar and bass</option>
+        </select>
+      </label>
+      <label class="field">Beats per bar
+        <select id="tx-meter-start">
+          <option value="4">4 (most songs)</option>
+          <option value="3">3 (waltz)</option>
+          <option value="2">2</option>
+        </select>
+      </label>
+      <label class="field" id="tx-from-field">From <input type="text" id="tx-from" inputmode="numeric" placeholder="0:00" /></label>
+      <label class="field" id="tx-to-field">To <input type="text" id="tx-to" inputmode="numeric" placeholder="end" /></label>
     </div>
 
     <div id="audio-recorder" class="recorder" hidden>
-      <button type="button" class="btn primary" id="record-start"><svg class="icon" aria-hidden="true"><use href="#i-record" /></svg><span>Start listening</span></button>
-      <button type="button" class="btn" id="record-stop" hidden><svg class="icon" aria-hidden="true"><use href="#i-stop" /></svg><span>Stop</span></button>
+      <button type="button" class="btn primary big" id="record-start"><svg class="icon" aria-hidden="true"><use href="#i-record" /></svg><span>Listen and write it out</span></button>
+      <button type="button" class="btn big" id="record-stop" hidden><svg class="icon" aria-hidden="true"><use href="#i-stop" /></svg><span>Stop and write it out</span></button>
       <span class="record-time" id="record-time" hidden>0:00</span>
       <span class="level" id="record-level" hidden aria-hidden="true"><span></span></span>
-      <span class="panel-note" id="record-hint" aria-live="polite"></span>
     </div>
+    <p class="record-hint" id="record-hint" aria-live="polite"></p>
 
-    <div id="audio-settings" class="audio-step" hidden>
-      <div class="recording-info">
-        <p><strong id="recording-name">Recording</strong> <span id="recording-length"></span></p>
-        <audio id="recording-preview" controls preload="metadata"></audio>
-      </div>
-      <div class="settings-grid">
-        <label class="field">Instrument
-          <select id="tx-mode-start">
-            <option value="guitar">Guitar (chords and notes)</option>
-            <option value="melody">Melody or solo</option>
-            <option value="bass">Bass</option>
-            <option value="band">Guitar and bass</option>
-          </select>
-        </label>
-        <label class="field">Beats per bar
-          <select id="tx-meter-start">
-            <option value="4">4 (most songs)</option>
-            <option value="3">3 (waltz)</option>
-            <option value="2">2</option>
-          </select>
-        </label>
-        <label class="field">From <input type="text" id="tx-from" inputmode="numeric" placeholder="0:00" /></label>
-        <label class="field">To <input type="text" id="tx-to" inputmode="numeric" placeholder="end" /></label>
-      </div>
-      <p class="panel-note">Works best on one instrument at a time, like a guitar lesson or a solo. Full band mixes give a rougher result to tidy up in the editor.</p>
-      <div class="tx-progress" id="tx-progress" hidden>
-        <div class="bar"><span></span></div>
-        <span id="tx-progress-text" aria-live="polite"></span>
-      </div>
-      <div class="dialog-actions">
-        <button type="button" class="btn" id="tx-cancel" hidden>Cancel</button>
-        <button type="button" class="btn primary" id="tx-start">Write it out</button>
-      </div>
+    <p class="panel-note" id="tx-tip">Works best on one instrument at a time, like a guitar lesson or a solo. Full band mixes give a rougher result to tidy up in the editor.</p>
+    <div class="tx-progress" id="tx-progress" hidden>
+      <div class="bar"><span></span></div>
+      <span id="tx-progress-text" aria-live="polite"></span>
+    </div>
+    <div class="dialog-actions" id="tx-actions" hidden>
+      <button type="button" class="btn" id="tx-cancel" hidden>Cancel</button>
+      <button type="button" class="btn primary" id="tx-start">Write it out</button>
     </div>
     <p class="status error" id="audio-error" hidden></p>
   </dialog>
