@@ -82,7 +82,7 @@ export function songsterrToScore(alphaTab, bundle) {
     const nth = panCounts.get(family) || 0;
     panCounts.set(family, nth + 1);
     const mix = defaultMix(family, nth, entry.data.volume, entry.data.balance);
-    buildTrack(m, score, entry, { isDrums, channel, measureCount, trackIndex, warnings, mix });
+    buildTrack(m, score, entry, { isDrums, channel, measureCount, trackIndex, warnings, mix, key: bundle && !Array.isArray(bundle) ? bundle.key : null });
   });
 
   score.finish(new alphaTab.Settings());
@@ -321,6 +321,11 @@ function buildTrack(m, score, entry, ctx) {
     } else {
       bar.clef = m.Clef.G2;
       bar.clefOttava = m.Ottavia._8vb;
+    }
+    // A key signature, when the data knows the key (transcriptions do).
+    if (!ctx.isDrums && ctx.key && Number.isInteger(ctx.key.fifths) && Math.abs(ctx.key.fifths) <= 7) {
+      bar.keySignature = ctx.key.fifths;
+      bar.keySignatureType = ctx.key.minor ? m.KeySignatureType.Minor : m.KeySignatureType.Major;
     }
     staff.addBar(bar);
 

@@ -3,7 +3,7 @@
 // and the Transcription panel for adjusting the result. The score itself is
 // shown by the app.
 
-import { youtubeId, canRecordTab, canRecordMic, startTabRecording, startMicRecording, decodeAudio, forModel, Transcriber } from './audio-input.js';
+import { youtubeId, canRecordTab, canRecordMic, startTabRecording, startMicRecording, decodeAudio, forModel, wavBlob, songFromVideoTitle, Transcriber } from './audio-input.js';
 import { analyzeRecording } from './analysis.js';
 import { notesToBundle } from './transcribe.js';
 
@@ -175,6 +175,10 @@ export function createTranscribeUI(host) {
     $('youtube-unsupported').hidden = source !== 'youtube' || youtubeOk;
     $('youtube-form').hidden = source !== 'youtube' || !setup || !youtubeOk;
     if (source === 'youtube' && !youtubeOk) $('youtube-frame').hidden = true;
+    const elsewhere = source === 'youtube' && youtubeOk && !!flow.videoId && flow.ytMode === 'tab';
+    $('youtube-frame').hidden = source !== 'youtube' || !youtubeOk || !flow.videoId || flow.ytMode === 'tab';
+    $('youtube-elsewhere').hidden = !elsewhere || !setup;
+    $('youtube-switch').hidden = source !== 'youtube' || !youtubeOk || !flow.videoId || flow.ytMode === 'tab' || !setup;
     $('audio-file').hidden = source !== 'file';
     $('file-drop').hidden = source !== 'file' || !!flow.buffer;
     $('recording-info').hidden = source !== 'file' || !flow.buffer;
@@ -189,7 +193,7 @@ export function createTranscribeUI(host) {
     const label = go.querySelector('span');
     const micInstead = source === 'youtube' && !youtubeOk;
     if (micInstead) label.textContent = 'Use the microphone instead';
-    else if (source === 'youtube') label.textContent = 'Listen and write it out';
+    else if (source === 'youtube') label.textContent = flow.ytMode === 'tab' ? 'Listen to the YouTube tab' : 'Listen and write it out';
     else if (source === 'mic') label.textContent = 'Start recording';
     else label.textContent = 'Write it out';
     go.disabled = micInstead
@@ -203,6 +207,7 @@ export function createTranscribeUI(host) {
     if (flow.source === 'youtube') {
       if (!canRecordTab()) hint('');
       else if (!flow.videoId) hint('Paste a link to a YouTube video to begin.');
+      else if (flow.ytMode === 'tab') hint('');
       else hint('When your browser asks what to share, choose this tab and keep "Share tab audio" on. The video plays by itself.');
     } else if (flow.source === 'mic') hint(canRecordMic() ? 'Your browser will ask to use the microphone.' : '');
     else hint(flow.buffer ? '' : '');
@@ -266,10 +271,70 @@ export function createTranscribeUI(host) {
     flow.player?.destroy?.();
     flow.player = null;
     flow.videoId = null;
+    flow.videoError = null;
+    flow.ytMode = 'here';
     const holder = document.createElement('div');
     holder.id = 'youtube-player';
     $('youtube-frame').replaceChildren(holder);
     $('youtube-frame').hidden = true;
+  }
+
+  // What YouTube's player error codes mean, for the person.
+  const VIDEO_ERRORS = {
+    2: "That link doesn't point to a video YouTube can play.",
+    5: "This video can't be played in this browser's player.",
+    100: 'That video was removed or is private.',
+    101: "This video's owner doesn't let it play on other websites.",
+    150: "This video's owner doesn't let it play on other websites."
+  };
+
+  /** Plays the video on YouTube itself, in its own tab, and listens to that tab. */
+  function useElsewhere(reason = '') {
+    flow.ytMode = 'tab';
+    flow.player?.pauseVideo?.();
+    const from = Math.floor(parseTime($('tx-from').value) || 0);
+    $('open-on-youtube').href = `https://www.youtube.com/watch?v=${flow.videoId}${from ? `&t=${from}s` : ''}`;
+    $('elsewhere-why').textContent = reason;
+    $('use-here').parentElement.hidden = flow.videoError != null;
+    layout();
+    setupHint();
+  }
+
+  function useHere() {
+    flow.ytMode = 'here';
+    layout();
+    setupHint();
+  }
+
+  /**
+   * Starts the video muted for a moment to find out early whether it can play
+   * here at all (some owners don't allow it), then puts it back.
+   */
+  function probeVideo(player, id) {
+    flow.probing = true;
+    try {
+      player.mute();
+      player.playVideo();
+    } catch {
+      flow.probing = false;
+      return;
+    }
+    const started = performance.now();
+    const check = () => {
+      if (flow.videoId !== id || !flow.probing) return;
+      const state = player.getPlayerState?.();
+      if (state === 1 && player.getCurrentTime() > 0.2) {
+        flow.probing = false;
+        player.pauseVideo();
+        player.seekTo(0, true);
+        player.unMute();
+      } else if (performance.now() - started > 9000) {
+        flow.probing = false;
+        player.pauseVideo?.();
+        player.unMute?.();
+      } else setTimeout(check, 250);
+    };
+    setTimeout(check, 250);
   }
 
   async function loadVideo(link) {
@@ -281,8 +346,8 @@ export function createTranscribeUI(host) {
     if (id === flow.videoId) return;
     showError('');
     clearVideo();
-    $('youtube-frame').hidden = false;
     flow.name = 'YouTube video';
+    flow.artist = '';
     flow.videoId = id;
     layout();
     setupHint();
@@ -294,9 +359,28 @@ export function createTranscribeUI(host) {
         videoId: id,
         playerVars: { rel: 0, playsinline: 1 },
         events: {
+          onReady: (e) => {
+            if (flow.videoId !== id) return;
+            flow.videoDuration = e.target.getDuration?.() || 0; // the song's length (an ad has its own)
+            probeVideo(e.target, id);
+          },
           onStateChange: (e) => {
             // The video ended while listening: that's the whole part.
-            if (e.data === YT.PlayerState.ENDED && flow.phase === 'listening') finishListening();
+            if (e.data === YT.PlayerState.ENDED && flow.phase === 'listening' && flow.ytMode === 'here') finishListening();
+          },
+          onError: (e) => {
+            if (flow.videoId !== id) return;
+            flow.probing = false;
+            flow.videoError = e.data;
+            const why = VIDEO_ERRORS[e.data] || "YouTube won't play this video here.";
+            if (e.data === 100 || e.data === 2) {
+              if (flow.phase === 'listening') abandonListening(why);
+              else showError(why);
+              return;
+            }
+            // It can still be played on YouTube itself.
+            if (flow.phase === 'listening' && flow.ytMode === 'here') abandonListening('');
+            if (flow.ytMode !== 'tab') useElsewhere(`${why} You can still use it: play it on YouTube and the site listens to that tab.`);
           }
         }
       });
@@ -309,12 +393,13 @@ export function createTranscribeUI(host) {
       frame.allowFullscreen = true;
       $('youtube-frame').replaceChildren(frame);
     }
-    // The video's title, for the score (YouTube allows this lookup from any page).
+    $('open-on-youtube').href = `https://www.youtube.com/watch?v=${id}`;
+    // The video's title and channel, for the score (YouTube allows this lookup from any page).
     try {
       const res = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${id}`)}`);
       if (res.ok) {
         const info = await res.json();
-        if (info.title && flow.videoId === id) flow.name = info.title;
+        if (flow.videoId === id) Object.assign(flow, songFromVideoTitle(info.title, info.author_name));
       }
     } catch {
       // keep the plain name
@@ -374,16 +459,22 @@ export function createTranscribeUI(host) {
   async function startListening() {
     showError('');
     const youtube = flow.source === 'youtube';
+    const elsewhere = youtube && flow.ytMode === 'tab';
     let part = { from: 0, to: null };
     if (youtube) {
       part = readPart();
       if (!part) return;
-      hint('Your browser is asking what to share: choose this tab and keep "Share tab audio" on.');
+      hint(
+        elsewhere
+          ? 'Your browser is asking what to share: choose the YouTube tab and keep "Share tab audio" on. Then play the video there.'
+          : 'Your browser is asking what to share: choose this tab and keep "Share tab audio" on.'
+      );
     }
+    flow.probing = false;
     $('tx-go').disabled = true;
     roll.clear();
-    roll.placeholder('Notes appear here a moment after they are heard');
-    const live = transcriber.live(workerSettings(), {
+    roll.placeholder(elsewhere ? 'Play the video in the YouTube tab: notes appear here as they are heard' : 'Notes appear here a moment after they are heard');
+    const live = transcriber.live({ ...workerSettings(), returnAudio: true }, {
       onPartial: ({ notes, from }) => roll.update(notes, from),
       onProgress: (p) => {
         flow.heard = p.seconds;
@@ -393,8 +484,28 @@ export function createTranscribeUI(host) {
     flow.onProgress = null;
     live.result.catch(() => {}); // handled when finishing
     flow.heard = 0;
+    flow.pushed = 0; // seconds of sound sent to the transcriber
+    flow.soundAt = null; // when the music started, in those seconds
+    flow.videoPlaying = false;
+    flow.lastVideoTime = -1;
+    flow.lastVideoMove = 0;
+    const player = youtube && !elsewhere ? flow.player : null;
+    const controlled = !!player?.getPlayerState;
+    const onSamples = (samples, rate) => {
+      // Only the video itself: not ads, buffering or pauses.
+      if (controlled && !flow.videoPlaying) return;
+      if (flow.soundAt == null) {
+        let peak = 0;
+        for (let i = 0; i < samples.length; i += 4) peak = Math.max(peak, Math.abs(samples[i]));
+        if (peak < 0.01) {
+          if (elsewhere) return; // waiting for the video to start in the other tab
+        } else flow.soundAt = flow.pushed;
+      }
+      flow.pushed += samples.length / rate;
+      live.push(samples, rate);
+    };
     try {
-      flow.recorder = youtube ? await startTabRecording({ onSamples: (s, rate) => live.push(s, rate) }) : await startMicRecording({ onSamples: (s, rate) => live.push(s, rate) });
+      flow.recorder = youtube ? await startTabRecording({ otherTab: elsewhere, onSamples }) : await startMicRecording({ onSamples });
     } catch (err) {
       transcriber.cancel();
       $('tx-go').disabled = false;
@@ -403,7 +514,7 @@ export function createTranscribeUI(host) {
       showError(
         denied
           ? youtube
-            ? 'Sharing was cancelled. Press Listen and write it out again, choose this tab, and keep "Share tab audio" on.'
+            ? `Sharing was cancelled. Press ${elsewhere ? 'Listen to the YouTube tab' : 'Listen and write it out'} again, choose ${elsewhere ? 'the YouTube tab' : 'this tab'}, and keep "Share tab audio" on.`
             : 'The microphone was blocked. Allow it in the address bar, then try again.'
           : err.message || String(err)
       );
@@ -413,47 +524,87 @@ export function createTranscribeUI(host) {
     if (!flow.recorder.live) transcriber.cancel(); // this browser can't stream: transcribe after recording
     flow.phase = 'listening';
     flow.stopAt = part.to;
+    flow.partLength = part.to != null ? part.to - part.from : null;
     flow.mode = mode();
-    const player = youtube ? flow.player : null;
+    flow.listenStarted = performance.now();
     if (player?.playVideo) {
+      player.unMute?.();
       player.seekTo(part.from, true);
       player.playVideo();
     }
     layout();
     hint(
-      youtube
-        ? player?.playVideo
-          ? `Listening while the video plays. It stops by itself ${part.to ? `at ${formatTime(part.to)}` : 'at the end'}, or press Stop.`
-          : 'Listening. Press play on the video, then Stop when the part is over.'
-        : 'Recording. Press Stop when you are done.'
+      elsewhere
+        ? `Play the video in the YouTube tab. ${flow.partLength ? `Listening stops after ${formatTime(flow.partLength)} of music, or` : 'When the part is over,'} press Stop sharing in Chrome's bar or come back and press Stop.`
+        : youtube
+          ? controlled
+            ? `Listening while the video plays. It stops by itself ${part.to ? `at ${formatTime(part.to)}` : 'at the end'}, or press Stop.`
+            : 'Listening. Press play on the video, then Stop when the part is over.'
+          : 'Recording. Press Stop when you are done.'
     );
     $('listen-note').textContent = `Writing out ${MODE_NAMES[flow.mode]}`;
+    flow.title = document.title;
+    document.title = '● Listening… Tab to Sheet';
     flow.recorder.onEnd(() => finishListening());
     let quiet = 0;
+    let stuckHinted = false;
+    // A timer rather than animation frames: it keeps running while the
+    // person is in the YouTube tab.
     const tick = () => {
       if (flow.phase !== 'listening') return;
+      const now = performance.now();
+      if (controlled) {
+        const t = player.getCurrentTime?.() ?? 0;
+        if (t !== flow.lastVideoTime) {
+          flow.lastVideoTime = t;
+          flow.lastVideoMove = now;
+        }
+        const duration = player.getDuration?.() || 0;
+        if (!flow.videoDuration && duration && !flow.lastVideoMove) flow.videoDuration = duration;
+        const ad = flow.videoDuration > 0 && duration > 0 && Math.abs(duration - flow.videoDuration) > 2;
+        flow.videoPlaying = player.getPlayerState() === 1 && now - flow.lastVideoMove < 500 && t >= part.from - 1 && !ad;
+        if (!flow.videoPlaying && !stuckHinted && now - flow.listenStarted > 12000 && flow.pushed < 1) {
+          stuckHinted = true;
+          hint("The video hasn't started. Press play on it. If it won't play here, press Stop and choose Play it on YouTube instead.");
+        }
+      }
       const level = flow.recorder.level();
-      const seconds = flow.recorder.seconds();
+      const seconds = flow.recorder.live ? flow.pushed : flow.recorder.seconds();
       $('record-level').firstElementChild.style.width = `${Math.round(level * 100)}%`;
       $('record-time').textContent = formatTime(seconds);
       roll.setView({ from: Math.max(0, seconds - 12), to: Math.max(12, seconds), now: seconds });
       quiet = level > 0.02 ? 0 : quiet + 1;
-      if (quiet === 240) hint(youtube ? 'No sound yet. Is the video playing? If not, press play on it.' : 'No sound yet. Is the microphone on and near the music?');
-      if (quiet === 0 && seconds > 4 && !roll.count() && flow.live && flow.heard > 3) hint('Listening… notes will appear here as they are heard.');
-      if (player?.getCurrentTime && flow.stopAt && player.getCurrentTime() >= flow.stopAt) {
+      if (quiet === 40 && (!controlled || flow.videoPlaying)) {
+        hint(elsewhere ? 'Waiting for sound. Play the video in the YouTube tab (and check "Share tab audio" was on).' : youtube ? 'No sound yet. Is the video playing? If not, press play on it.' : 'No sound yet. Is the microphone on and near the music?');
+      }
+      if (controlled && flow.stopAt && player.getCurrentTime() >= flow.stopAt) {
         finishListening();
         return;
       }
-      flow.timer = requestAnimationFrame(tick);
+      if (elsewhere && flow.partLength && flow.soundAt != null && flow.pushed - flow.soundAt >= flow.partLength) {
+        finishListening();
+        return;
+      }
+      flow.timer = setTimeout(tick, 100);
     };
     tick();
   }
 
   function stopRecorder() {
-    cancelAnimationFrame(flow.timer);
+    clearTimeout(flow.timer);
+    if (flow.title) document.title = flow.title;
     const recorder = flow.recorder;
     flow.recorder = null;
     return recorder ? { recorder, done: recorder.stop() } : null;
+  }
+
+  /** Gives up on the current listening (the video can't be played, for one). */
+  function abandonListening(message) {
+    if (flow.phase !== 'listening') return;
+    stopRecorder();
+    transcriber.cancel();
+    flow.live = null;
+    backToSetup(message);
   }
 
   async function finishListening() {
@@ -463,15 +614,21 @@ export function createTranscribeUI(host) {
     flow.phase = 'writing';
     layout();
     hint('');
-    const seconds = stopped.recorder.seconds();
+    const seconds = flow.live ? flow.pushed : stopped.recorder.seconds();
     const blob = await stopped.done;
     if (seconds < 1.5 || !blob.size) {
-      backToSetup('That recording is too short. Record at least a few seconds.');
+      backToSetup(
+        flow.source === 'youtube' && seconds < 1.5
+          ? "No sound came through from the video. Make sure it plays, and that \"Share tab audio\" is on when you share."
+          : 'That recording is too short. Record at least a few seconds.'
+      );
       transcriber.cancel();
+      flow.live = null;
       return;
     }
     const name = flow.source === 'youtube' ? flow.name : 'Recording';
-    const url = URL.createObjectURL(blob);
+    const artist = flow.source === 'youtube' ? flow.artist : '';
+    let url = URL.createObjectURL(blob);
     try {
       let result;
       if (flow.live) {
@@ -489,11 +646,16 @@ export function createTranscribeUI(host) {
           setProgress(Math.min(0.99, heard / seconds), left > 3 && speed ? `Writing out the notes… about ${formatLeft(left / speed)} left` : 'Writing out the last notes…');
         };
         result = await live.result;
+        // Play back exactly what was transcribed (no ads or pauses), in step with the music.
+        if (result.audio?.length) {
+          URL.revokeObjectURL(url);
+          url = URL.createObjectURL(wavBlob(result.audio, 22050));
+        }
       } else {
         const buffer = await decodeAudio(blob);
         result = await runModel(await forModel(buffer));
       }
-      await complete(result, { name, url, mode: flow.mode });
+      await complete(result, { name, artist, url, mode: flow.mode });
     } catch (err) {
       URL.revokeObjectURL(url);
       if (!err.cancelled) backToSetup(`Couldn't transcribe this recording: ${err.message || err}`);
@@ -550,7 +712,7 @@ export function createTranscribeUI(host) {
   }
 
   /** Finds the beats, chords and bars, writes the music and shows it. */
-  async function complete(result, { name, url, mode: chosen, offset = 0 }) {
+  async function complete(result, { name, artist = '', url, mode: chosen, offset = 0 }) {
     if (!result.notes.length) throw new Error('No notes were heard. Check that the recording has sound, or try a louder part.');
     setProgress(1, 'Laying out the music…');
     await new Promise((r) => setTimeout(r, 30)); // let the message show
@@ -566,15 +728,24 @@ export function createTranscribeUI(host) {
       notes: result.notes,
       analysis,
       name,
+      artist,
       url,
       offset,
       settings: { mode: chosen, meter: 'auto', tempoScale: 1, bpm: null, beatTime: null, barShift: 0, grid: null, sensitivity: 'normal' }
     };
     const shown = await render();
+    // Automated tests read the result here; nothing is kept otherwise.
+    if (window.__tab2sheetTest) window.__tab2sheetTest({ notes: result.notes, features: result.features, analysis, bundle: current.bundle, seconds: result.seconds, backend: result.backend });
     flow.phase = 'setup';
     setProgress(null);
     if (shown) {
       dialog.close();
+      if (document.hidden) {
+        // Finished while the person was in the YouTube tab: say so in this tab's title.
+        const title = document.title;
+        document.title = '✓ Music written out · Tab to Sheet';
+        document.addEventListener('visibilitychange', () => (document.title = title), { once: true });
+      }
     } else {
       backToSetup("Couldn't show the music.");
     }
@@ -597,7 +768,7 @@ export function createTranscribeUI(host) {
       grid: s.grid || undefined,
       minVelocity: SENSITIVITY[s.sensitivity].minVelocity,
       title: current.name,
-      artist: 'Transcribed from a recording'
+      artist: current.artist || 'Transcribed from a recording'
     });
     current.bundle = bundle;
     current.written = bundle.transcription;
@@ -611,6 +782,9 @@ export function createTranscribeUI(host) {
     const w = current.written;
     if ($('tx-audio').getAttribute('src') !== current.url) $('tx-audio').src = current.url;
     $('tx-mode').value = s.mode;
+    const key = current.bundle.key;
+    const pretty = (name) => name.replace(/^([A-G])b/, '$1♭').replace(/^([A-G])#/, '$1♯');
+    $('tx-summary').textContent = [key ? `Key of ${pretty(key.name)}` : '', `${w.bpm} bpm`, `${w.beatsPerBar}/4`].filter(Boolean).join(' · ');
     $('tx-bpm').value = String(w.bpm);
     $('tx-bpm-note').textContent = w.followsBeats ? 'follows the recording' : 'steady';
     $('tx-meter').value = s.meter;

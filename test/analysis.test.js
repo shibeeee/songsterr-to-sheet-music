@@ -231,3 +231,52 @@ test('follows the beats found in a recording and writes chords to strum', () => 
   assert.equal(notesToBundle(notes, { mode: 'chords', analysis, tempoScale: 0.5 }).transcription.bpm, Math.round(analysis.bpm / 2));
   assert.equal(notesToBundle(notes, { mode: 'chords', analysis, tempoScale: 2 }).transcription.bpm, Math.round(analysis.bpm * 2));
 });
+
+test('finds the key and spells chords for it', async () => {
+  const { findKey, spellChord } = await import('../public/js/analysis.js');
+  const beats = Array.from({ length: 16 }, (_, i) => i * 0.5);
+  const Ab = [44, 56, 60, 63, 68];
+  const Db = [37, 49, 53, 56, 61];
+  const Eb = [39, 51, 55, 58, 63];
+  const Fm = [41, 53, 56, 60, 65];
+  const per = beats.map((_, i) => [Ab, Db, Eb, Fm][Math.floor(i / 4)]);
+  const key = findKey(harmonyFeatures(chordFrames(beats, per)));
+  assert.equal(key.name, 'Ab major');
+  assert.equal(key.fifths, -4);
+  assert.equal(spellChord({ root: 1, quality: '' }, key), 'Db');
+  assert.equal(spellChord({ root: 6, quality: 'm' }, { fifths: 2 }), 'F#m');
+  // G D Em C is G major (one sharp), not C major.
+  const G = [43, 55, 59, 62, 67];
+  const D = [38, 50, 54, 57, 62];
+  const Em = [40, 52, 55, 59, 64];
+  const per2 = beats.map((_, i) => [G, D, Em, C][Math.floor(i / 4)]);
+  assert.equal(findKey(harmonyFeatures(chordFrames(beats, per2))).fifths, 1);
+});
+
+test('a song name and artist from a YouTube title', async () => {
+  const { songFromVideoTitle } = await import('../public/js/audio-input.js');
+  const cases = [
+    ['Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)', 'Rick Astley', 'Never Gonna Give You Up', 'Rick Astley'],
+    ['The Beatles - The Beatles - Let It Be (Official Music Video) [Remastered 2015]', 'The Beatles', 'Let It Be', 'The Beatles'],
+    ['Numb (Official Music Video) [4K UPGRADE] – Linkin Park', 'Linkin Park', 'Numb', 'Linkin Park'],
+    ['Let It Be - The Beatles (acoustic cover)', 'Some Singer', 'Let It Be', 'The Beatles'],
+    ['Wonderwall', 'OasisVEVO', 'Wonderwall', 'Oasis'],
+    ['Oasis - Live Forever', 'Oasis', 'Live Forever', 'Oasis']
+  ];
+  for (const [title, channel, name, artist] of cases) assert.deepEqual(songFromVideoTitle(title, channel), { name, artist }, title);
+});
+
+test('strummed chords need no ties', () => {
+  // Off-beat strums and a chord held across a bar line.
+  const beatLength = 0.5;
+  const beats = Array.from({ length: 20 }, (_, i) => i * beatLength);
+  const per = beats.map((_, i) => (i < 8 ? C : G));
+  const notes = [];
+  for (const b of [0, 0.75, 1.25, 2.25, 3.5, 5.25]) for (const p of [48, 52, 55]) notes.push({ start: b, duration: 0.6, pitch: p + (b > 4 ? 7 : 0), velocity: 0.6 });
+  const harmony = harmonyFeatures(chordFrames(beats, per));
+  const analysis = { beats, bpm: 120, beatsPerBar: 4, downbeat: 0, harmony, key: { fifths: 0, minor: false, name: 'C major' } };
+  const bundle = notesToBundle(notes, { mode: 'chords', analysis });
+  const ties = bundle.tracks[0].data.measures.flatMap((m) => m.voices[0].beats).filter((b) => b.notes.some((n) => n.tie));
+  assert.equal(ties.length, 0);
+  assert.equal(bundle.key.name, 'C major');
+});

@@ -21,7 +21,9 @@ Turn any song into sheet music. Paste a Songsterr tab, a YouTube video or an aud
   - **Bass**: the bass line, for 4-string bass.
   - **Every note**: everything that was heard, for one guitar or piano on its own. Or **guitar and bass** as two tracks.
 
-  For YouTube, paste the link and press **Listen and write it out**: your browser asks to share the tab's sound (Chrome and Edge on a computer), the video plays by itself, and the notes appear on screen as they are heard. The music is written out while the video plays, so it is ready a moment after the video ends. Choose **Only part of it** to do just a verse or a solo.
+  For YouTube, paste the link and press **Listen and write it out**: your browser asks to share the tab's sound (Chrome and Edge on a computer), the video plays by itself, and the notes appear on screen as they are heard. The music is written out while the video plays, so it is ready a moment after the video ends. Choose **Only part of it** to do just a verse or a solo. Only the video itself is used: ads, buffering and pauses are skipped. Some videos' owners don't allow them to play inside other websites; for those (or any video), the site switches to **play it on YouTube**: open the video in its own tab, press **Listen to the YouTube tab**, choose that tab, and play it there.
+
+  The score gets the song's name and artist from the video title, a key signature for the key it hears, and chords spelled for that key (D♭ in A♭ major, not C#).
 
   It follows the recording's own beat (bands without a click track speed up and slow down), finds where the bars start and whether it's in 4 or 3, and names the chords. Afterwards, listen to the recording next to the music and adjust what is written out, the tempo (half or double), the bar lines, beats per bar, shortest note and how many quiet notes to keep, then fix anything in the editor.
 

@@ -133,20 +133,33 @@ async function recordStream(stream, { onSamples = null } = {}) {
 
 /**
  * Records the sound of a browser tab: the browser asks which tab to share.
+ * With otherTab, the person picks another tab (a video playing on YouTube)
+ * and the browser switches to it so they can press play there.
  * Throws a friendly error when no sound is shared.
  */
-export async function startTabRecording(options = {}) {
+export async function startTabRecording({ otherTab = false, ...options } = {}) {
+  const controller = otherTab && typeof CaptureController !== 'undefined' ? new CaptureController() : null;
   const stream = await navigator.mediaDevices.getDisplayMedia({
     video: true, // browsers require it; only the sound is kept
     audio: { ...CLEAN_AUDIO, suppressLocalAudioPlayback: false },
-    preferCurrentTab: true,
-    selfBrowserSurface: 'include',
-    surfaceSwitching: 'exclude',
-    systemAudio: 'include'
+    preferCurrentTab: !otherTab,
+    selfBrowserSurface: otherTab ? 'exclude' : 'include',
+    surfaceSwitching: otherTab ? 'include' : 'exclude',
+    systemAudio: 'include',
+    ...(controller ? { controller } : {})
   });
+  try {
+    controller?.setFocusBehavior?.('focus-captured-surface');
+  } catch {
+    // older browsers stay on this page
+  }
   if (!stream.getAudioTracks().length) {
     for (const t of stream.getTracks()) t.stop();
-    throw new Error('No sound was shared. Try again, choose this tab, and turn on "Share tab audio".');
+    throw new Error(
+      otherTab
+        ? 'No sound was shared. Try again, choose the YouTube tab, and turn on "Share tab audio".'
+        : 'No sound was shared. Try again, choose this tab, and turn on "Share tab audio".'
+    );
   }
   for (const t of stream.getVideoTracks()) t.stop();
   return recordStream(stream, options);
@@ -155,6 +168,56 @@ export async function startTabRecording(options = {}) {
 export async function startMicRecording(options = {}) {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: CLEAN_AUDIO });
   return recordStream(stream, options);
+}
+
+/** A 16-bit mono WAV file of the samples, for playing back. */
+export function wavBlob(samples, rate) {
+  const data = new DataView(new ArrayBuffer(44 + samples.length * 2));
+  const text = (offset, value) => [...value].forEach((c, i) => data.setUint8(offset + i, c.charCodeAt(0)));
+  text(0, 'RIFF');
+  data.setUint32(4, 36 + samples.length * 2, true);
+  text(8, 'WAVEfmt ');
+  data.setUint32(16, 16, true);
+  data.setUint16(20, 1, true);
+  data.setUint16(22, 1, true);
+  data.setUint32(24, rate, true);
+  data.setUint32(28, rate * 2, true);
+  data.setUint16(32, 2, true);
+  data.setUint16(34, 16, true);
+  text(36, 'data');
+  data.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) data.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 32767, true);
+  return new Blob([data], { type: 'audio/wav' });
+}
+
+// Words in video titles that aren't part of the song's name.
+const TITLE_NOISE = /\s*[([][^)\]]*\b(?:official|video|audio|lyrics?|visuali[sz]er|hd|hq|4k|remaster(?:ed)?|live|m\/v|mv|explicit|clean|full song|letra|cover|karaoke|instrumental)\b[^)\]]*[)\]]/gi;
+
+/**
+ * A song title and artist from a YouTube video's title and channel:
+ * "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)"
+ * becomes { name: "Never Gonna Give You Up", artist: "Rick Astley" }.
+ */
+export function songFromVideoTitle(title = '', channel = '') {
+  let clean = String(title).replace(TITLE_NOISE, '').replace(/\s*\|.*$/, '').replace(/\s+on (?:spotify|apple|itunes)\b.*$/i, '').replace(/\s+(?:M\/V|MV)$/i, '').replace(/\s+/g, ' ').trim();
+  const cleanChannel = String(channel).replace(/\s*-\s*Topic$/i, '').replace(/VEVO$/i, '').replace(/\s+Official$/i, '').trim();
+  const parts = clean.split(/\s+[-–—~]\s+/);
+  if (parts.length >= 2 && parts[0] && parts[1]) {
+    const squash = (text) => text.toLowerCase().replace(/[^a-z0-9]/g, '');
+    let [artist, ...rest] = parts;
+    let name = rest.join(' - ');
+    // "Song - Artist" when the channel says who the artist is.
+    const who = squash(cleanChannel);
+    // Covers are usually titled "Song - Original artist (cover)".
+    const cover = /\bcover\b/i.test(title) && !(who && squash(artist).includes(who));
+    if ((who && squash(name).includes(who) && !squash(artist).includes(who)) || cover) [artist, name] = [name, artist];
+    // "Artist - Artist - Song" (the channel added its name again)
+    const again = new RegExp(`^${artist.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+[-–—~]\\s+`, 'i');
+    name = name.replace(again, '');
+    return { name: name.replace(/^["“]|["”]$/g, '').trim(), artist: artist.trim() };
+  }
+  clean = clean.replace(/^["“]|["”]$/g, '');
+  return { name: clean || 'YouTube video', artist: cleanChannel };
 }
 
 /** Decodes any audio or video file the browser can play. Returns an AudioBuffer. */

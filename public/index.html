@@ -282,6 +282,7 @@
         <details class="panel" data-panel="transcription" id="tx-panel" open hidden>
           <summary><h2>Transcription</h2></summary>
           <audio id="tx-audio" controls preload="metadata"></audio>
+          <p class="tx-summary" id="tx-summary"></p>
           <p class="panel-note">Listen and compare. Changing these rewrites the music (edits you made to it are lost).</p>
           <div class="field">
             <label for="tx-mode">Write out</label>
@@ -557,6 +558,16 @@
         <button type="submit" class="btn">Load</button>
       </form>
       <div id="youtube-frame" class="youtube-frame" hidden><div id="youtube-player"></div></div>
+      <div id="youtube-elsewhere" class="elsewhere" hidden>
+        <p id="elsewhere-why" class="elsewhere-why"></p>
+        <ol class="steps">
+          <li><a id="open-on-youtube" class="btn" href="#" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true"><use href="#i-youtube" /></svg>Open the video on YouTube</a></li>
+          <li>Come back and press <strong>Listen to the YouTube tab</strong>. Choose the YouTube tab and keep "Share tab audio" on.</li>
+          <li>Play the video there. When the part is over, press <strong>Stop sharing</strong> in Chrome's bar, or come back and press Stop.</li>
+        </ol>
+        <p class="muted small"><button type="button" class="linklike" id="use-here">Try playing it here instead</button></p>
+      </div>
+      <p class="youtube-switch" id="youtube-switch" hidden><button type="button" class="linklike" id="use-elsewhere">Video won't play here? Play it on YouTube instead</button></p>
     </div>
 
     <div id="audio-file" class="audio-step" hidden>

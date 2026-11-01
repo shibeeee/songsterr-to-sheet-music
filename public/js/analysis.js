@@ -350,6 +350,75 @@ function chromaBetween(h, which, t0, t1) {
   return c;
 }
 
+// ---------------------------------------------------------------------------
+// Key
+// ---------------------------------------------------------------------------
+
+// How much each scale step sounds in major and minor music (Krumhansl and Kessler).
+const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+// Sharps (+) or flats (-) in the key signature of each major key, by tonic.
+const MAJOR_FIFTHS = [0, -5, 2, -3, 4, -1, 6, 1, -4, 3, -2, 5];
+const SHARP_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const FLAT_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+function correlation(a, b) {
+  const ma = a.reduce((s, v) => s + v, 0) / 12;
+  const mb = b.reduce((s, v) => s + v, 0) / 12;
+  let num = 0;
+  let da = 0;
+  let db = 0;
+  for (let i = 0; i < 12; i++) {
+    num += (a[i] - ma) * (b[i] - mb);
+    da += (a[i] - ma) ** 2;
+    db += (b[i] - mb) ** 2;
+  }
+  return da && db ? num / Math.sqrt(da * db) : 0;
+}
+
+/** Note names for a key: flats in flat keys, sharps in sharp keys. */
+export function namesForKey(key) {
+  if (!key || key.fifths === 0) return NAMES;
+  return key.fifths < 0 ? FLAT_NAMES : SHARP_NAMES;
+}
+
+/**
+ * The key of the music, from how much each pitch class sounds overall.
+ * Returns { tonic, minor, fifths, name, confidence }.
+ */
+export function findKey(harmony) {
+  const total = new Float64Array(12);
+  for (let i = 0; i < harmony.times.length; i++) {
+    for (let k = 0; k < 12; k++) total[k] += harmony.mid[i * 12 + k] + harmony.bass[i * 12 + k];
+  }
+  const sum = total.reduce((a, b) => a + b, 0) || 1;
+  const MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11];
+  const profileScore = (tonic, minor) => {
+    const profile = minor ? MINOR_PROFILE : MAJOR_PROFILE;
+    return correlation(total, Array.from({ length: 12 }, (_, k) => profile[(k - tonic + 12) % 12]));
+  };
+  // The key signature: the major scale that holds the most of what is heard
+  // (the profile breaks near-ties).
+  let best = null;
+  for (let major = 0; major < 12; major++) {
+    const inScale = MAJOR_SCALE.reduce((s, step) => s + total[(major + step) % 12], 0) / sum;
+    const score = inScale + 0.15 * Math.max(profileScore(major, false), profileScore((major + 9) % 12, true));
+    if (!best || score > best.score) best = { score, major, inScale };
+  }
+  // Major, or its relative minor?
+  const relative = (best.major + 9) % 12;
+  const minor = profileScore(relative, true) > profileScore(best.major, false);
+  const tonic = minor ? relative : best.major;
+  const fifths = MAJOR_FIFTHS[best.major];
+  const names = fifths < 0 ? FLAT_NAMES : fifths > 0 ? SHARP_NAMES : NAMES;
+  return { tonic, minor, fifths, name: `${names[tonic]} ${minor ? 'minor' : 'major'}`, confidence: best.inScale };
+}
+
+/** A chord's name spelled for the key (Db rather than C# in A-flat major). */
+export function spellChord(chord, key) {
+  return namesForKey(key)[chord.root] + chord.quality;
+}
+
 /** Chord shapes as pitch classes above the root, with how much each tone counts. */
 export const CHORD_QUALITIES = {
   '': { tones: [0, 4, 7], weights: [1, 1, 0.8] },
@@ -534,7 +603,7 @@ export function findBars(beats, { harmony, low = null, notes = [], meter = null 
 // The tune
 // ---------------------------------------------------------------------------
 
-export const MELODY_WEIGHTS = { velocity: 0.3, duration: 0.25, standOut: 0.6, top: 0.06, crowd: 0.15, height: 0.6, skip: 0.4, jump: 0.045, leap: 0.65, overlap: 0.1, ringing: 0.2 };
+export const MELODY_WEIGHTS = { velocity: 0.3, duration: 0.25, standOut: 0.6, top: 0.06, crowd: 0.15, height: 0.6, skip: 0.4, jump: 0.045, leap: 0.65, overlap: 0.1, ringing: 0.2, register: 0.5 };
 
 /**
  * Picks the melody from everything that was heard: one note at a time,
@@ -600,6 +669,13 @@ export function melodyLine(notes, { minPitch = 48, weights = MELODY_WEIGHTS } = 
           s -= Math.max(0, jump - 2) * w.jump + (jump > 12 ? w.leap : 0);
           // Cutting short a loud note that is still ringing is less likely.
           if (ringing && n.pitch !== state.last.pitch) s -= w.overlap;
+          // A voice or solo keeps to its range: notes far from the recent ones
+          // are more likely another instrument.
+          const recent = state.path.slice(-8).map((m) => m.pitch).sort((a, b) => a - b);
+          if (recent.length >= 4) {
+            const away = Math.abs(n.pitch - recent[recent.length >> 1]);
+            if (away > 7) s -= (w.register * (away - 7)) / 12;
+          }
         }
         next.push({ last: n, score: state.score + s, path: state.path.concat(n) });
       }
@@ -611,11 +687,13 @@ export function melodyLine(notes, { minPitch = 48, weights = MELODY_WEIGHTS } = 
     }
     beam = [...byLast.values()].sort((a, b) => b.score - a.score).slice(0, BEAM);
   }
-  // Monophonic: each note ends when the next one starts.
+  // Monophonic: each note ends when the next one starts. Small gaps (a singer
+  // breathing, a note dying away) are joined, as a person would write them.
   const path = beam[0].path;
   return path.map((n, i) => {
     const next = path[i + 1];
-    const end = next ? Math.min(n.start + n.duration, next.start) : n.start + n.duration;
+    let end = n.start + n.duration;
+    if (next) end = next.start - end < 0.35 ? next.start : Math.min(end, next.start);
     return { ...n, duration: Math.max(0.05, end - n.start) };
   });
 }
@@ -660,5 +738,5 @@ export function analyzeRecording({ notes, flux, low = null, onsetSums, harmony, 
   const last = Math.max(...notes.map((n) => n.start + n.duration));
   const beats = extendBeats(tracked, first - 1, last + 1);
   const bars = findBars(beats, { harmony, low, notes, meter });
-  return { beats, bpm, beatsPerBar: bars.beatsPerBar, downbeat: bars.downbeat, harmony };
+  return { beats, bpm, beatsPerBar: bars.beatsPerBar, downbeat: bars.downbeat, harmony, key: findKey(harmony) };
 }

@@ -6,7 +6,7 @@
 // everything to a rhythm grid and writes the result in the same Songsterr-style
 // format the rest of the app reads, so a transcription opens like any tab.
 
-import { beatPosition, chordsPerBeat, melodyLine } from './analysis.js';
+import { beatPosition, chordsPerBeat, melodyLine, spellChord } from './analysis.js';
 
 export const TRANSCRIBE_MODES = {
   chords: { label: 'Chords to strum' },
@@ -305,6 +305,12 @@ function bassEvents(notes) {
     const near = [before, after].filter((p) => p != null);
     if (near.length && n.pitch - 12 >= BASS_RANGE[0] && near.every((p) => p <= n.pitch - 7)) events.set(slot, [{ ...n, pitch: n.pitch - 12 }]);
   });
+  // Bass lines are played joined up: a short gap before the next note is no rest.
+  slots.forEach((slot, i) => {
+    const next = slots[i + 1];
+    const [n] = events.get(slot);
+    if (next != null && next - n.endSlot <= 2) events.set(slot, [{ ...events.get(slot)[0], endSlot: next }]);
+  });
   return events;
 }
 
@@ -312,16 +318,29 @@ function bassEvents(notes) {
  * Strummed chords: a chord shape wherever the accompaniment starts several
  * notes together, and wherever the chord changes.
  */
-function strumEvents(notes, chordAtSlot, changeSlots, slotsPerBeat) {
+function strumEvents(notes, chordAtSlot, changeSlots, slotsPerBeat, slotsPerBar) {
   const mid = bySlot(inRange(notes, [45, 79]));
   const strums = new Set(changeSlots);
   for (const [slot, list] of mid) if (list.length >= 2 || (list.length === 1 && slot % slotsPerBeat === 0)) strums.add(slot);
+  // Write it the way strumming is written: a strum on every beat that has an
+  // off-beat strum, and again at each bar line, so no strum needs a tie.
+  const ordered = [...strums].sort((a, b) => a - b);
+  if (ordered.length) {
+    const first = ordered[0];
+    for (const slot of ordered) {
+      const onBeat = slot - (slot % slotsPerBeat);
+      if (onBeat > first) strums.add(onBeat);
+    }
+    for (let bar = Math.ceil(first / slotsPerBar) * slotsPerBar; bar <= ordered.at(-1); bar += slotsPerBar) strums.add(bar);
+  }
   const events = new Map();
   for (const slot of [...strums].sort((a, b) => a - b)) {
     const chord = chordAtSlot(slot);
     if (!chord) continue;
     const shape = chordShape(chord.root, chord.quality);
-    events.set(slot, shape.map((p) => ({ ...p, velocity: 0.8, slot, endSlot: slot + slotsPerBeat * 8 })));
+    // An off-beat strum lasts to the next beat; one on the beat until the next strum.
+    const endSlot = slot % slotsPerBeat ? slot - (slot % slotsPerBeat) + slotsPerBeat : slot + slotsPerBar;
+    events.set(slot, shape.map((p) => ({ ...p, velocity: 0.8, slot, endSlot })));
   }
   return events;
 }
@@ -332,6 +351,11 @@ function tracksFor(mode, notes, harmonyAt, melodyWeights) {
   const bass = { name: 'Bass', tuning: BASS_TUNING, program: BASS_PROGRAM, events: new Map() };
   if (mode === 'melody') {
     const line = melodyLine(notes.filter((n) => n.pitch >= GUITAR_RANGE[0]), melodyWeights ? { weights: melodyWeights } : {});
+    // Notes the tune joins up last until the next note.
+    line.forEach((n, i) => {
+      const next = line[i + 1];
+      if (next && Math.abs(n.start + n.duration - next.start) < 1e-6) n.endSlot = Math.max(n.slot + 1, next.slot);
+    });
     guitar.events = eventsFrom(bySlot(inRange(line, GUITAR_RANGE)), loudest);
     guitar.name = 'Melody';
     return [guitar];
@@ -341,7 +365,7 @@ function tracksFor(mode, notes, harmonyAt, melodyWeights) {
     return [bass];
   }
   if (mode === 'chords') {
-    guitar.events = strumEvents(notes, harmonyAt.chordAtSlot, harmonyAt.changeSlots, harmonyAt.slotsPerBeat);
+    guitar.events = strumEvents(notes, harmonyAt.chordAtSlot, harmonyAt.changeSlots, harmonyAt.slotsPerBeat, harmonyAt.slotsPerBar);
     guitar.name = 'Chords';
     guitar.fixedFingering = true;
     return [guitar];
@@ -548,7 +572,7 @@ export function notesToBundle(notes, options = {}) {
       chordBySlot.push({ slot, chord });
       if (chord && chord.name !== previous) {
         // Guitar parts get a diagram of the shape to play.
-        const mark = { text: chord.name };
+        const mark = { text: spellChord(chord, analysis.key) };
         if (mode !== 'bass') {
           const frets = new Array(6).fill(-1);
           for (const n of chordShape(chord.root, chord.quality)) frets[n.string] = n.fret;
@@ -567,7 +591,7 @@ export function notesToBundle(notes, options = {}) {
     }
     return found;
   };
-  const tracks = tracksFor(mode, placed, { chordAtSlot, changeSlots: [...marks.keys()], slotsPerBeat }, options.melodyWeights);
+  const tracks = tracksFor(mode, placed, { chordAtSlot, changeSlots: [...marks.keys()], slotsPerBeat, slotsPerBar }, options.melodyWeights);
 
   let lastStart = 0;
   for (const t of tracks) for (const slot of t.events.keys()) lastStart = Math.max(lastStart, slot);
@@ -580,6 +604,7 @@ export function notesToBundle(notes, options = {}) {
   return {
     title,
     artist,
+    ...(analysis?.key ? { key: { fifths: analysis.key.fifths, minor: analysis.key.minor, name: analysis.key.name } } : {}),
     transcription: { bpm, beatTime, mode, beatsPerBar, barShift, grid, minVelocity, confidence, tempoScale, followsBeats: !!analysis && !options.bpm },
     tracks: tracks.map((t, i) => ({
       meta: { title: t.name, instrumentId: t.program },

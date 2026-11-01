@@ -15,7 +15,7 @@
 // Messages out:
 //   { type: 'progress', id, value, seconds }           value 0..1 once the length is known
 //   { type: 'partial', id, notes, from }               notes heard so far, from `from` seconds on
-//   { type: 'notes', id, notes, features, seconds, backend }
+//   { type: 'notes', id, notes, features, seconds, backend, audio }  audio when settings.returnAudio
 //   { type: 'error', id, message }
 
 import * as tf from '@tensorflow/tfjs';
@@ -267,9 +267,11 @@ function finish(s) {
   lastResult = { id: s.id, frames, onsets, n };
   const notes = modelNotes(lastResult, s.settings);
   session = null;
+  // The sound itself, when asked (to play back exactly what was transcribed).
+  const audio = s.settings.returnAudio ? s.audio.view().slice(LEAD) : null;
   self.postMessage(
-    { type: 'notes', id: s.id, notes, seconds: heardSeconds(s), backend, features: { flux, low, onsetSums, harmony } },
-    [flux.buffer, low.buffer, onsetSums.buffer, harmony.times.buffer, harmony.mid.buffer, harmony.bass.buffer]
+    { type: 'notes', id: s.id, notes, seconds: heardSeconds(s), backend, features: { flux, low, onsetSums, harmony }, audio },
+    [flux.buffer, low.buffer, onsetSums.buffer, harmony.times.buffer, harmony.mid.buffer, harmony.bass.buffer, ...(audio ? [audio.buffer] : [])]
   );
 }
 
