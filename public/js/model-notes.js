@@ -126,6 +126,7 @@ export function modelNotes({ frames, onsets, n }, settings = {}) {
     events.push({ startFrame: start, durationFrames: end - start, f, amplitude: amplitude(start, end, f) });
   }
 
+  events.sort((a, b) => a.startFrame - b.startFrame || a.f - b.f);
   return events.map((e) => {
     let onset = 0;
     for (let r = e.startFrame - 1; r <= e.startFrame + 1; r++) if (r >= 0 && r < n) onset = Math.max(onset, onsets[r * PITCHES + e.f]);

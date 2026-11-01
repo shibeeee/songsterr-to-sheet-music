@@ -691,6 +691,7 @@ function applySettings() {
   s.notation.rhythmMode =
     options.view === 'tab' && options.rhythm ? alphaTab.TabRhythmMode.ShowWithBars : alphaTab.TabRhythmMode.Hidden;
   s.notation.elements.set(alphaTab.NotationElement.EffectChordNames, options.chords);
+  s.notation.elements.set(alphaTab.NotationElement.ChordDiagrams, options.chords);
   s.notation.elements.set(alphaTab.NotationElement.EffectTempo, options.tempo);
   s.notation.elements.set(alphaTab.NotationElement.EffectDynamics, options.dynamics);
   if (state.score) {

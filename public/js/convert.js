@@ -398,8 +398,18 @@ function buildBeat(m, staff, b, ctx) {
     if (!staff.hasChord(id)) {
       const chord = new m.Chord();
       chord.name = chordName;
-      chord.showDiagram = false;
       chord.showFingering = false;
+      // A shape (frets per string, highest string first, -1 = not played) gets a diagram.
+      const frets = b.chord && Array.isArray(b.chord.frets) && b.chord.frets.length === staff.tuning.length ? b.chord.frets : null;
+      chord.showDiagram = !!frets;
+      if (frets) {
+        chord.strings = frets.slice();
+        const played = frets.filter((f) => f > 0);
+        const low = played.length ? Math.min(...played) : 1;
+        chord.firstFret = Math.max(...frets) > 4 ? low : 1;
+        // A barre: the lowest fret held on more than two strings, reaching the top string.
+        if (low > 0 && frets.filter((f) => f === low).length > 2 && frets[0] === low) chord.barreFrets = [low];
+      }
       staff.addChord(id, chord);
     }
     beat.chordId = id;

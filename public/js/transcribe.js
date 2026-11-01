@@ -378,7 +378,7 @@ export function placeOnStrings(pitches, tuning) {
   return out;
 }
 
-/** Writes one track's events as Songsterr-style measures, with chord names at `marks` (slot -> name). */
+/** Writes one track's events as Songsterr-style measures, with chords at `marks` (slot -> { text, frets }). */
 function measuresFor(track, { totalSlots, slotsPerBar, unitsPerSlot, beatsPerBar, unitsPerBeat, marks }) {
   const slots = [...track.events.keys()].sort((a, b) => a - b);
   // Each event lasts until its notes end or the next event starts, whichever is first.
@@ -407,7 +407,7 @@ function measuresFor(track, { totalSlots, slotsPerBar, unitsPerSlot, beatsPerBar
         splitDuration((a - barStart) * unitsPerSlot, (b - a) * unitsPerSlot, unitsPerBeat).forEach((v, k) => {
           const beat = { type: v.type, duration: [v.dots ? 3 : 1, v.dots ? v.type * 2 : v.type] };
           if (v.dots) beat.dots = v.dots;
-          if (k === 0 && marks.has(a)) beat.chord = { text: marks.get(a) };
+          if (k === 0 && marks.has(a)) beat.chord = { ...marks.get(a) };
           if (!notes) {
             beat.rest = true;
             beat.notes = [{ rest: true }];
@@ -546,7 +546,16 @@ export function notesToBundle(notes, options = {}) {
       const slot = Math.round((i - origin) * slotsPerBeat);
       if (slot < 0) return;
       chordBySlot.push({ slot, chord });
-      if (chord && chord.name !== previous) marks.set(slot, chord.name);
+      if (chord && chord.name !== previous) {
+        // Guitar parts get a diagram of the shape to play.
+        const mark = { text: chord.name };
+        if (mode !== 'bass') {
+          const frets = new Array(6).fill(-1);
+          for (const n of chordShape(chord.root, chord.quality)) frets[n.string] = n.fret;
+          mark.frets = frets;
+        }
+        marks.set(slot, mark);
+      }
       previous = chord ? chord.name : previous;
     });
   }

@@ -1,6 +1,6 @@
 # Tab to Sheet
 
-Turn any Songsterr tab into printable sheet music: standard notation, tablature, or both. Paste a link or search for a song, pick your tracks, and print it or save it as a PDF.
+Turn any song into sheet music. Paste a Songsterr tab, a YouTube video or an audio file and get standard notation, tablature and chord names you can play along with, edit and print. Free, with no account, and everything runs in your browser.
 
 **Use it online: <https://shibeeee.github.io/songsterr-to-sheet-music/>**
 
@@ -15,7 +15,17 @@ Turn any Songsterr tab into printable sheet music: standard notation, tablature,
 - **Download** as Guitar Pro (`.gp`), MIDI (`.mid`), alphaTex (`.atex`) or the raw Songsterr data (`.json`, which reopens later without an internet connection).
 - **Listen along**: play, pause, seek, volume, and per-track mute and solo. Tracks get a balanced band mix (drums and bass centred, guitars spread left and right). Playback starts the moment you press play with the small sound set while the **Better** set (GeneralUser GS, 32 MB) downloads in the background; it switches in at the next pause and is stored in your browser, so later visits start with it straight away. You can also stay on **Small**, or play only the tracks that are shown.
 - **Practice**: a one-bar count-in, a metronome click, a loop (drag across bars to loop just those), and speed from 25% to 150%. The **speed trainer** loops the music starting slower (say 60%) and adds a little speed each time through until it reaches your target.
-- **From a recording, free**: turn a YouTube video, an audio file (MP3, WAV, M4A, or a video file) or your own playing into tab and notation. For YouTube, paste the link: the video plays on the page and the site listens while it plays (your browser asks you to share the tab's sound; this works in Chrome and Edge on a computer). Everything runs in your browser with Spotify's open-source [Basic Pitch](https://github.com/spotify/basic-pitch-ts) model, so nothing is uploaded and there's no account or subscription. It finds the tempo and the beat, writes the rhythm, and picks comfortable fingerings. Choose guitar, melody, bass, or guitar and bass as two tracks. Afterwards you can listen to the recording next to the music and adjust the tempo, bar lines, beats per bar, shortest note and how many quiet notes to keep, then fix any wrong notes in the editor. It works best on one instrument at a time (a lesson, a solo, an acoustic cover); full band mixes come out rougher.
+- **From a recording, free**: turn a YouTube video, an audio file (MP3, WAV, M4A, FLAC, or a video file) or your own playing into music. Choose what to write out:
+  - **Chords**: chord names over the bars, with playable guitar shapes in the song's strumming rhythm. Best for full songs.
+  - **Melody**: the tune, one note at a time (a voice, a solo or a riff), picked out of the whole mix, with the chord names above it, like a lead sheet.
+  - **Bass**: the bass line, for 4-string bass.
+  - **Every note**: everything that was heard, for one guitar or piano on its own. Or **guitar and bass** as two tracks.
+
+  For YouTube, paste the link and press **Listen and write it out**: your browser asks to share the tab's sound (Chrome and Edge on a computer), the video plays by itself, and the notes appear on screen as they are heard. The music is written out while the video plays, so it is ready a moment after the video ends. Choose **Only part of it** to do just a verse or a solo.
+
+  It follows the recording's own beat (bands without a click track speed up and slow down), finds where the bars start and whether it's in 4 or 3, and names the chords. Afterwards, listen to the recording next to the music and adjust what is written out, the tempo (half or double), the bar lines, beats per bar, shortest note and how many quiet notes to keep, then fix anything in the editor.
+
+  It runs on Spotify's open-source [Basic Pitch](https://github.com/spotify/basic-pitch-ts) model in your browser, on the graphics card or, where that isn't available, WebAssembly (several times faster than real time on an ordinary laptop). Nothing is uploaded and there's no subscription. Like any automatic transcription it isn't perfect, especially for dense band mixes, so treat it as a strong first draft.
 - **Open your own files**: Guitar Pro 3 to 7, MusicXML, alphaTex or saved Songsterr data. Drag a file onto the page or use **Open file**.
 - **Edit the music**: click a note to change its fret, string, length or technique, add and remove notes, beats and bars, copy and paste bars, rename sections, change tempo, time signature and repeats, and rename the song or tracks. Full undo and redo.
 - **Your changes are saved automatically** in your browser: reopen the song and your version is there, with a one-click way back to the original. Recent songs you've changed are marked "edited". Download Guitar Pro to share your version or move it to another device.
@@ -87,9 +97,11 @@ Open <http://localhost:3000>. For the better instrument sounds, run `npm run fet
 | `public/js/editor.js` | Editing operations (notes, rhythm, bars, song details) and undo snapshots. |
 | `public/js/edit-ui.js` | The edit panel, selection highlight and editing keys. |
 | `public/js/fingering.js` | Fingering optimizer and 5/6-string to 4-string bass conversion. |
-| `public/js/transcribe.js` | Turns notes heard in a recording into a score: tempo, beat, rhythm, tracks. |
+| `public/js/transcribe.js` | Turns notes heard in a recording into a score: rhythm against the beats, the chosen part (chords, melody, bass, every note), chord shapes. |
+| `public/js/analysis.js` | Listens to the shape of a recording: onset strength, beat tracking, bars and time signature, chord names, the melody line. |
+| `public/js/model-notes.js` | Reads notes from the model's output (Basic Pitch's method, in linear time). |
 | `public/js/transcribe-ui.js`, `public/js/audio-input.js` | The "from a recording" flow: YouTube, audio files, microphone, the Transcription panel. |
-| `src/transcriber-worker.js`, `scripts/bundle-transcriber.js` | The Basic Pitch model in a web worker, bundled into `vendor/transcriber/` at build time. |
+| `src/transcriber-worker.js`, `scripts/bundle-transcriber.js` | The Basic Pitch model in a web worker that transcribes while the sound arrives (GPU or WebAssembly), bundled into `vendor/transcriber/` at build time. |
 | `server.js` | Optional local server (`npm start`). |
 | `relay/worker.js`, `wrangler.toml` | The relay for the hosted site and its Cloudflare settings. |
 | `scripts/build-static.js` | Builds the static site into `dist/` (`npm run build`). |

@@ -173,7 +173,8 @@ export function createTranscribeUI(host) {
     const youtubeOk = canRecordTab();
     $('audio-youtube').hidden = source !== 'youtube';
     $('youtube-unsupported').hidden = source !== 'youtube' || youtubeOk;
-    $('youtube-form').hidden = source !== 'youtube' || !setup;
+    $('youtube-form').hidden = source !== 'youtube' || !setup || !youtubeOk;
+    if (source === 'youtube' && !youtubeOk) $('youtube-frame').hidden = true;
     $('audio-file').hidden = source !== 'file';
     $('file-drop').hidden = source !== 'file' || !!flow.buffer;
     $('recording-info').hidden = source !== 'file' || !flow.buffer;
@@ -186,13 +187,16 @@ export function createTranscribeUI(host) {
     const go = $('tx-go');
     go.hidden = !setup;
     const label = go.querySelector('span');
-    if (source === 'youtube') label.textContent = 'Listen and write it out';
+    const micInstead = source === 'youtube' && !youtubeOk;
+    if (micInstead) label.textContent = 'Use the microphone instead';
+    else if (source === 'youtube') label.textContent = 'Listen and write it out';
     else if (source === 'mic') label.textContent = 'Start recording';
     else label.textContent = 'Write it out';
-    go.disabled =
-      (source === 'youtube' && (!youtubeOk || !flow.videoId)) || (source === 'file' && !flow.buffer) || (source === 'mic' && !canRecordMic());
-    go.querySelector('svg use').setAttribute('href', source === 'file' ? '#i-music' : '#i-record');
-    go.classList.toggle('record', source !== 'file');
+    go.disabled = micInstead
+      ? !canRecordMic()
+      : (source === 'youtube' && !flow.videoId) || (source === 'file' && !flow.buffer) || (source === 'mic' && !canRecordMic());
+    go.querySelector('svg use').setAttribute('href', source === 'file' ? '#i-music' : micInstead ? '#i-mic' : '#i-record');
+    go.classList.toggle('record', source !== 'file' && !micInstead);
   }
 
   function setupHint() {
@@ -213,6 +217,7 @@ export function createTranscribeUI(host) {
       flow.warmed = true;
       transcriber.warm();
     }
+    if (source === 'youtube' && !link && !flow.videoId) $('youtube-input').value = '';
     await selectSource(source);
     if (source === 'youtube' && link) {
       $('youtube-input').value = link;
@@ -705,7 +710,8 @@ export function createTranscribeUI(host) {
     $('dialog-file-input').click();
   });
   $('tx-go').addEventListener('click', () => {
-    if (flow.source === 'file') transcribeFile();
+    if (flow.source === 'youtube' && !canRecordTab()) selectSource('mic');
+    else if (flow.source === 'file') transcribeFile();
     else startListening();
   });
   $('record-stop').addEventListener('click', finishListening);

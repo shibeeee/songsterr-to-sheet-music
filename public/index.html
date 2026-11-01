@@ -4,7 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Tab to Sheet</title>
-  <meta name="description" content="Turn Songsterr tabs into printable sheet music: standard notation, tablature, or both." />
+  <meta name="description" content="Turn any song into sheet music: Songsterr tabs, YouTube videos and recordings into notation, tab and chords you can play along with, edit and print. Free, in your browser." />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Tab to Sheet: turn any song into sheet music" />
+  <meta property="og:description" content="Songsterr tabs, YouTube videos and recordings into notation, tab and chords. Free, in your browser." />
+  <meta property="og:image" content="https://shibeeee.github.io/songsterr-to-sheet-music/social.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="theme-color" content="#f7f7f5" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#131315" media="(prefers-color-scheme: dark)" />
   <meta name="color-scheme" content="light dark" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2318181b'/%3E%3Cg stroke='%23fff' stroke-width='1.6'%3E%3Cpath d='M7 10h18M7 14h18M7 18h18M7 22h18'/%3E%3C/g%3E%3Ccircle cx='13' cy='20' r='3' fill='%23fff'/%3E%3Cpath d='M15.6 20V8.5' stroke='%23fff' stroke-width='1.8'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/styles.css" />
@@ -70,14 +79,15 @@
     <!-- Home -------------------------------------------------------------->
     <section id="home" class="home" aria-labelledby="home-title">
       <div class="home-inner">
-        <h1 id="home-title">Sheet music from any Songsterr tab</h1>
-        <p class="lede">Paste a link or search for a song, then print it as standard notation, tablature, or both.</p>
+        <p class="eyebrow">Free · No account · Runs in your browser</p>
+        <h1 id="home-title">Turn any song into sheet music</h1>
+        <p class="lede">Paste a Songsterr tab or a YouTube video, or bring a recording. Get notation and tab you can play along with, edit and print. <button type="button" class="linklike" id="demo-btn">See an example</button></p>
 
         <form class="search large" id="home-search" role="search" autocomplete="off">
           <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
-          <label for="home-search-input" class="visually-hidden">Songsterr link or song name</label>
+          <label for="home-search-input" class="visually-hidden">Songsterr or YouTube link, or a song to search for</label>
           <input id="home-search-input" name="q" type="text" spellcheck="false" autofocus
-                 placeholder="https://www.songsterr.com/a/wsa/…  or  artist and song" />
+                 placeholder="Paste a Songsterr or YouTube link, or search for a song" />
           <button type="submit" class="btn primary">Go</button>
         </form>
 
@@ -85,30 +95,12 @@
 
         <ol id="results" class="results" hidden aria-label="Search results"></ol>
 
-        <p class="alt">
-          Or <label class="linklike">open a file<input class="file-input" type="file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml,.mxl,.json,.atex,.alphatex,.txt,audio/*,.mp3,.wav,.m4a,.ogg,.flac" /></label>
-          (Guitar Pro, MusicXML, saved Songsterr data), or <button type="button" class="linklike" id="demo-btn">look at an example</button>.
-        </p>
-
-        <section class="from-audio" aria-labelledby="from-audio-title">
-          <h2 id="from-audio-title">Or from a recording</h2>
-          <p>Hear a song you want to learn? Turn the recording into tab and notation, free, right in your browser.</p>
-          <div class="audio-sources">
-            <button type="button" class="source-card" id="source-youtube">
-              <svg class="icon" aria-hidden="true"><use href="#i-youtube" /></svg>
-              <strong>YouTube video</strong><span>Paste a link; it listens while the video plays</span>
-            </button>
-            <label class="source-card">
-              <svg class="icon" aria-hidden="true"><use href="#i-music" /></svg>
-              <strong>Audio file</strong><span>MP3, WAV, M4A or a video file</span>
-              <input class="audio-file-input" type="file" accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.flac,.aac,.webm,.mp4" />
-            </label>
-            <button type="button" class="source-card" id="source-mic">
-              <svg class="icon" aria-hidden="true"><use href="#i-mic" /></svg>
-              <strong>Record yourself</strong><span>Play it into the microphone</span>
-            </button>
-          </div>
-        </section>
+        <div class="quick-actions from-audio" aria-label="Other ways to start">
+          <button type="button" class="quick" id="source-youtube"><svg class="icon" aria-hidden="true"><use href="#i-youtube" /></svg>YouTube video</button>
+          <label class="quick"><svg class="icon" aria-hidden="true"><use href="#i-music" /></svg>Audio file<input class="audio-file-input" type="file" accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.flac,.aac,.webm,.mp4" /></label>
+          <button type="button" class="quick" id="source-mic"><svg class="icon" aria-hidden="true"><use href="#i-mic" /></svg>Record yourself</button>
+          <label class="quick" title="Guitar Pro, MusicXML or saved Songsterr data"><svg class="icon" aria-hidden="true"><use href="#i-file" /></svg>Guitar Pro file<input class="file-input" type="file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml,.mxl,.json,.atex,.alphatex,.txt,audio/*,.mp3,.wav,.m4a,.ogg,.flac" /></label>
+        </div>
 
         <p id="back-to-score" class="back-to-score" hidden>
           <button type="button" class="linklike" id="back-btn"><svg class="icon" aria-hidden="true"><use href="#i-back" /></svg><span></span></button>
@@ -117,6 +109,24 @@
         <section id="recent" class="recent" hidden aria-labelledby="recent-title">
           <h2 id="recent-title">Recent</h2>
           <ul id="recent-list"></ul>
+        </section>
+
+        <section class="features" aria-label="What it does">
+          <div class="feature">
+            <svg class="icon" aria-hidden="true"><use href="#i-print" /></svg>
+            <h2>Tabs into real notation</h2>
+            <p>Standard notation, tab or both, with chord names, readable instrument names and clean pages to print or save as PDF.</p>
+          </div>
+          <div class="feature">
+            <svg class="icon" aria-hidden="true"><use href="#i-youtube" /></svg>
+            <h2>Recordings into music</h2>
+            <p>Chords, melody or bass from a YouTube video or an audio file, written out while it plays. Free, and nothing is uploaded.</p>
+          </div>
+          <div class="feature">
+            <svg class="icon" aria-hidden="true"><use href="#i-metronome" /></svg>
+            <h2>Built for practice</h2>
+            <p>Playback with loops, count-in, metronome and a speed trainer. Edit any note, move to 4-string bass, find easier fingerings.</p>
+          </div>
         </section>
 
         <details id="more-ways" class="more-ways">
