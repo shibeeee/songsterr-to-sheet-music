@@ -38,7 +38,9 @@ const MIME = {
   '.otf': 'font/otf',
   '.eot': 'application/vnd.ms-fontobject',
   '.sf2': 'application/octet-stream',
-  '.sf3': 'application/octet-stream'
+  '.sf3': 'application/octet-stream',
+  '.wasm': 'application/wasm',
+  '.bin': 'application/octet-stream'
 };
 
 function send(res, status, body, type = 'application/json; charset=utf-8', extra = {}) {

@@ -1,6 +1,6 @@
 // Bundles the audio transcriber (src/transcriber-worker.js: Spotify's Basic
-// Pitch model on TensorFlow.js) into .cache/transcriber/, with the model files
-// and licenses. The local server and the static build both serve that folder
+// Pitch model on TensorFlow.js) into .cache/transcriber/, with the model files,
+// the WebAssembly files and licenses. The local server and the static build both serve that folder
 // as vendor/transcriber/.
 import { build } from 'esbuild';
 import { cp, mkdir, rm } from 'node:fs/promises';
@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const OUT = join(ROOT, '.cache', 'transcriber');
 const BASIC_PITCH = join(ROOT, 'node_modules', '@spotify', 'basic-pitch');
+const WASM = join(ROOT, 'node_modules', '@tensorflow', 'tfjs-backend-wasm', 'dist');
 
 export async function bundleTranscriber() {
   await rm(OUT, { recursive: true, force: true });
@@ -29,6 +30,8 @@ export async function bundleTranscriber() {
     define: { window: 'undefined' }
   });
   await cp(join(BASIC_PITCH, 'model'), join(OUT, 'model'), { recursive: true });
+  // WebAssembly versions of TensorFlow.js, for computers where the GPU can't be used.
+  for (const file of ['tfjs-backend-wasm.wasm', 'tfjs-backend-wasm-simd.wasm']) await cp(join(WASM, file), join(OUT, file));
   await cp(join(BASIC_PITCH, 'LICENSE'), join(OUT, 'LICENSE-basic-pitch.txt'));
   return OUT;
 }

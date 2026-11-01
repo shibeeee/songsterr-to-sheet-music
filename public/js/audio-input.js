@@ -34,11 +34,37 @@ export function canRecordMic() {
 // Recording settings that keep the music as it is (no voice-call processing).
 const CLEAN_AUDIO = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
 
+// An audio worklet that hands the sound to the page in pieces, for
+// transcribing while recording. Mono, at the context's sample rate.
+const TAP_SOURCE = `
+class Tab2SheetTap extends AudioWorkletProcessor {
+  constructor() { super(); this.buf = new Float32Array(4096); this.n = 0; }
+  process(inputs) {
+    const input = inputs[0];
+    if (input && input.length) {
+      const a = input[0], b = input[1];
+      for (let i = 0; i < a.length; i++) {
+        this.buf[this.n++] = b ? (a[i] + b[i]) / 2 : a[i];
+        if (this.n === this.buf.length) {
+          this.port.postMessage(this.buf, [this.buf.buffer]);
+          this.buf = new Float32Array(4096);
+          this.n = 0;
+        }
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('tab2sheet-tap', Tab2SheetTap);
+`;
+let tapUrl = null;
+
 /**
  * Records a stream's sound. Returns { stop() -> Promise<Blob>, level() -> 0..1,
- * seconds() -> number, onEnd(fn) }. level() is for a meter showing sound is coming in.
+ * seconds() -> number, onEnd(fn), live } where live says whether onSamples
+ * receives the sound while recording. level() is for a meter showing sound is coming in.
  */
-function recordStream(stream, cleanup = () => {}) {
+async function recordStream(stream, { onSamples = null } = {}) {
   const audioTracks = stream.getAudioTracks();
   const audioStream = new MediaStream(audioTracks);
   const type = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'].find((t) => MediaRecorder.isTypeSupported?.(t));
@@ -48,10 +74,29 @@ function recordStream(stream, cleanup = () => {}) {
 
   const ctx = new AudioContext();
   ctx.resume().catch(() => {}); // created after an await, so make sure it runs
+  const source = ctx.createMediaStreamSource(audioStream);
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 1024;
-  ctx.createMediaStreamSource(audioStream).connect(analyser);
+  source.connect(analyser);
   const samples = new Float32Array(analyser.fftSize);
+
+  let live = false;
+  if (onSamples && ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
+    try {
+      tapUrl ||= URL.createObjectURL(new Blob([TAP_SOURCE], { type: 'application/javascript' }));
+      await ctx.audioWorklet.addModule(tapUrl);
+      const tap = new AudioWorkletNode(ctx, 'tab2sheet-tap', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+      // Silent output: the node only runs when connected to the speakers.
+      const mute = ctx.createGain();
+      mute.gain.value = 0;
+      source.connect(tap);
+      tap.connect(mute).connect(ctx.destination);
+      tap.port.onmessage = ({ data }) => onSamples(data, ctx.sampleRate);
+      live = true;
+    } catch {
+      live = false; // transcribed after recording instead
+    }
+  }
 
   const started = performance.now();
   let endHandlers = [];
@@ -64,7 +109,6 @@ function recordStream(stream, cleanup = () => {}) {
       if (recorder.state !== 'inactive') recorder.stop();
       for (const t of stream.getTracks()) t.stop();
       ctx.close().catch(() => {});
-      cleanup();
     }
     return finished;
   };
@@ -73,6 +117,7 @@ function recordStream(stream, cleanup = () => {}) {
   recorder.start(1000);
   return {
     stop,
+    live,
     seconds: () => (performance.now() - started) / 1000,
     level() {
       analyser.getFloatTimeDomainData(samples);
@@ -90,7 +135,7 @@ function recordStream(stream, cleanup = () => {}) {
  * Records the sound of a browser tab: the browser asks which tab to share.
  * Throws a friendly error when no sound is shared.
  */
-export async function startTabRecording() {
+export async function startTabRecording(options = {}) {
   const stream = await navigator.mediaDevices.getDisplayMedia({
     video: true, // browsers require it; only the sound is kept
     audio: { ...CLEAN_AUDIO, suppressLocalAudioPlayback: false },
@@ -101,15 +146,15 @@ export async function startTabRecording() {
   });
   if (!stream.getAudioTracks().length) {
     for (const t of stream.getTracks()) t.stop();
-    throw new Error('No sound was shared. Try again, choose the tab with the video, and turn on "Share tab audio".');
+    throw new Error('No sound was shared. Try again, choose this tab, and turn on "Share tab audio".');
   }
   for (const t of stream.getVideoTracks()) t.stop();
-  return recordStream(stream);
+  return recordStream(stream, options);
 }
 
-export async function startMicRecording() {
+export async function startMicRecording(options = {}) {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: CLEAN_AUDIO });
-  return recordStream(stream);
+  return recordStream(stream, options);
 }
 
 /** Decodes any audio or video file the browser can play. Returns an AudioBuffer. */
@@ -153,11 +198,12 @@ export class Transcriber {
     this.worker.onmessage = ({ data }) => {
       const job = this.pending.get(data.id);
       if (!job) return;
-      if (data.type === 'progress') job.onProgress?.(data.value);
+      if (data.type === 'progress') job.onProgress?.(data);
+      else if (data.type === 'partial') job.onPartial?.(data);
       else {
         this.pending.delete(data.id);
         if (data.type === 'error') job.reject(new Error(data.message));
-        else job.resolve(data);
+        else job.resolve({ ...data, id: data.id });
       }
     };
     this.worker.onerror = (e) => {
@@ -168,21 +214,45 @@ export class Transcriber {
     return this.worker;
   }
 
-  /** Listens to the audio. Resolves with { id, notes, backend }. */
-  transcribe(audio, settings, onProgress) {
-    const id = this.nextId++;
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, onProgress });
-      this.ensureWorker().postMessage({ type: 'transcribe', id, audio, modelUrl: this.modelUrl, settings }, [audio.buffer]);
-    }).then((data) => ({ ...data, id }));
+  /** Loads the listening model ahead of time, so transcribing starts at once. */
+  warm() {
+    this.ensureWorker().postMessage({ type: 'start', id: 0, modelUrl: this.modelUrl, settings: {} });
   }
 
-  /** Reads the notes of an earlier transcription again with other settings. */
+  job(id, handlers) {
+    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject, ...handlers }));
+  }
+
+  /**
+   * Transcribes while recording. Returns { push(samples, sampleRate), end(), result }
+   * where result resolves with { id, notes, features, seconds, backend }.
+   */
+  live(settings, handlers = {}) {
+    const id = this.nextId++;
+    const worker = this.ensureWorker();
+    const result = this.job(id, handlers);
+    worker.postMessage({ type: 'start', id, modelUrl: this.modelUrl, settings, live: true });
+    return {
+      id,
+      result,
+      push: (samples, sampleRate) => worker.postMessage({ type: 'audio', id, samples, sampleRate }, [samples.buffer]),
+      end: () => worker.postMessage({ type: 'end', id })
+    };
+  }
+
+  /** Transcribes a whole recording (mono, 22050 Hz). Resolves like live().result. */
+  transcribe(audio, settings, handlers = {}) {
+    const id = this.nextId++;
+    const result = this.job(id, handlers);
+    this.ensureWorker().postMessage({ type: 'transcribe', id, audio, modelUrl: this.modelUrl, settings }, [audio.buffer]);
+    return result;
+  }
+
+  /** Reads the notes of the last transcription again with other settings. */
   notes(id, settings) {
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.ensureWorker().postMessage({ type: 'notes', id, settings });
-    });
+    const result = this.job(id, {});
+    this.ensureWorker().postMessage({ type: 'notes', id, settings });
+    return result;
   }
 
   /** Stops whatever is running (the worker is restarted next time). */

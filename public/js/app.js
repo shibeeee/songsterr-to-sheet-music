@@ -976,7 +976,10 @@ const transcribeUI = createTranscribeUI({
  */
 async function convertForShow(bundle) {
   let { score, warnings } = songsterrToScore(alphaTab, bundle);
-  score.tracks.forEach((track, i) => optimizeFingering(alphaTab.model, score, i, { maxFret: options.maxFret, style: options.fingerStyle }));
+  // Chord shapes were chosen on purpose; everything else gets comfortable fingering.
+  score.tracks.forEach((track, i) => {
+    if (!bundle.tracks[i]?.data?.fixedFingering) optimizeFingering(alphaTab.model, score, i, { maxFret: options.maxFret, style: options.fingerStyle });
+  });
   score = rebuildScore(alphaTab, score, api.settings);
   return [score, warnings, { bundle, key: null }];
 }

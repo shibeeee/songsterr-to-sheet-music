@@ -272,13 +272,14 @@
         <details class="panel" data-panel="transcription" id="tx-panel" open hidden>
           <summary><h2>Transcription</h2></summary>
           <audio id="tx-audio" controls preload="metadata"></audio>
-          <p class="panel-note">Compare with the recording, then adjust. Changes rewrite the music (your edits to it are lost).</p>
+          <p class="panel-note">Listen and compare. Changing these rewrites the music (edits you made to it are lost).</p>
           <div class="field">
-            <label for="tx-mode">Instrument</label>
+            <label for="tx-mode">Write out</label>
             <select id="tx-mode">
-              <option value="guitar">Guitar (chords and notes)</option>
-              <option value="melody">Melody or solo</option>
+              <option value="chords">Chords</option>
+              <option value="melody">Melody</option>
               <option value="bass">Bass</option>
+              <option value="guitar">Every note (guitar)</option>
               <option value="band">Guitar and bass</option>
             </select>
           </div>
@@ -292,7 +293,7 @@
           </div>
           <div class="field">
             <label for="tx-meter">Beats per bar</label>
-            <select id="tx-meter"><option value="4">4</option><option value="3">3</option><option value="2">2</option></select>
+            <select id="tx-meter"><option value="auto">Automatic</option><option value="4">4</option><option value="3">3</option><option value="2">2</option></select>
           </div>
           <div class="field">
             <span class="field-label">Bar lines</span>
@@ -526,70 +527,85 @@
 
   <dialog id="audio-dialog" class="dialog audio-dialog" aria-labelledby="audio-title">
     <div class="dialog-head">
-      <h2 id="audio-title">Turn a recording into music</h2>
+      <h2 id="audio-title">Turn a recording into sheet music</h2>
       <button type="button" class="icon-btn" id="audio-close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#i-close" /></svg></button>
     </div>
 
-    <p class="status error" id="youtube-unsupported" hidden>
-      This browser can't listen to a video playing in a page. Open this site in <strong>Chrome</strong> or <strong>Edge</strong> on a computer, or use an audio file you have, or play the video on another device near this one and choose <button type="button" class="linklike" id="switch-to-mic">Record yourself</button>.
-    </p>
+    <div class="source-tabs" role="tablist" aria-label="Where the music comes from">
+      <button type="button" role="tab" class="source-tab" data-source="youtube" aria-selected="false"><svg class="icon" aria-hidden="true"><use href="#i-youtube" /></svg>YouTube</button>
+      <button type="button" role="tab" class="source-tab" data-source="file" aria-selected="false"><svg class="icon" aria-hidden="true"><use href="#i-music" /></svg>Audio file</button>
+      <button type="button" role="tab" class="source-tab" data-source="mic" aria-selected="false"><svg class="icon" aria-hidden="true"><use href="#i-mic" /></svg>Microphone</button>
+    </div>
 
     <div id="audio-youtube" class="audio-step" hidden>
+      <p class="status error" id="youtube-unsupported" hidden>
+        Listening to a YouTube video needs <strong>Chrome</strong> or <strong>Edge</strong> on a computer. In this browser, use an audio file, or play the video on another device and <button type="button" class="linklike" id="switch-to-mic">record it with the microphone</button>.
+      </p>
       <form id="youtube-form" class="youtube-form">
         <label for="youtube-input" class="visually-hidden">YouTube link</label>
-        <input id="youtube-input" type="url" placeholder="Paste a YouTube link" spellcheck="false" />
-        <button type="submit" class="btn">Load video</button>
+        <input id="youtube-input" type="url" placeholder="Paste a YouTube link" spellcheck="false" autocomplete="off" />
+        <button type="submit" class="btn">Load</button>
       </form>
       <div id="youtube-frame" class="youtube-frame" hidden><div id="youtube-player"></div></div>
     </div>
 
+    <div id="audio-file" class="audio-step" hidden>
+      <label class="drop-zone" id="file-drop">
+        <svg class="icon" aria-hidden="true"><use href="#i-music" /></svg>
+        <span><strong>Choose an audio file</strong> or drop it here</span>
+        <small>MP3, WAV, M4A, OGG, FLAC, or a video file</small>
+        <input id="dialog-file-input" type="file" accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.flac,.aac,.webm,.mp4" />
+      </label>
+      <div id="recording-info" class="recording-info" hidden>
+        <p><strong id="recording-name">Recording</strong> <span id="recording-length"></span> <button type="button" class="linklike" id="file-change">Choose another</button></p>
+        <audio id="recording-preview" controls preload="metadata"></audio>
+      </div>
+    </div>
+
     <div id="audio-mic" class="audio-step" hidden>
-      <p>Play or sing into the microphone: close to the sound, in a quiet room. For a song on another device, hold it near the microphone.</p>
+      <p class="muted">Play or sing close to your microphone, in a quiet room. To use a song on another device, hold it near the microphone.</p>
     </div>
 
-    <div id="recording-info" class="recording-info" hidden>
-      <p><strong id="recording-name">Recording</strong> <span id="recording-length"></span></p>
-      <audio id="recording-preview" controls preload="metadata"></audio>
+    <fieldset class="mode-picker" id="mode-picker">
+      <legend>Write out</legend>
+      <label class="mode-card"><input type="radio" name="tx-mode-start" value="chords" checked /><span><strong>Chords</strong><small>Chord names and shapes to strum. Best for full songs.</small></span></label>
+      <label class="mode-card"><input type="radio" name="tx-mode-start" value="melody" /><span><strong>Melody</strong><small>The tune, one note at a time: a voice, solo or riff.</small></span></label>
+      <label class="mode-card"><input type="radio" name="tx-mode-start" value="bass" /><span><strong>Bass</strong><small>The bass line, for 4-string bass.</small></span></label>
+      <label class="mode-card"><input type="radio" name="tx-mode-start" value="guitar" /><span><strong>Every note</strong><small>All notes heard. Best for one guitar or piano alone.</small></span></label>
+    </fieldset>
+
+    <details class="part-picker" id="tx-part">
+      <summary>Only part of it</summary>
+      <div class="part-fields">
+        <label class="field">From <input type="text" id="tx-from" inputmode="numeric" placeholder="0:00" /></label>
+        <label class="field">To <input type="text" id="tx-to" inputmode="numeric" placeholder="the end" /></label>
+      </div>
+    </details>
+
+    <div class="listen" id="listen" hidden>
+      <canvas id="note-roll" class="note-roll" aria-label="Notes heard so far"></canvas>
+      <div class="listen-bar">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span class="record-time" id="record-time">0:00</span>
+        <span class="level" id="record-level" aria-hidden="true"><span></span></span>
+        <span class="listen-note" id="listen-note" aria-live="polite"></span>
+      </div>
     </div>
 
-    <div id="tx-options" class="settings-grid" hidden>
-      <label class="field">Instrument
-        <select id="tx-mode-start">
-          <option value="guitar">Guitar (chords and notes)</option>
-          <option value="melody">Melody or solo</option>
-          <option value="bass">Bass</option>
-          <option value="band">Guitar and bass</option>
-        </select>
-      </label>
-      <label class="field">Beats per bar
-        <select id="tx-meter-start">
-          <option value="4">4 (most songs)</option>
-          <option value="3">3 (waltz)</option>
-          <option value="2">2</option>
-        </select>
-      </label>
-      <label class="field" id="tx-from-field">From <input type="text" id="tx-from" inputmode="numeric" placeholder="0:00" /></label>
-      <label class="field" id="tx-to-field">To <input type="text" id="tx-to" inputmode="numeric" placeholder="end" /></label>
-    </div>
-
-    <div id="audio-recorder" class="recorder" hidden>
-      <button type="button" class="btn primary big" id="record-start"><svg class="icon" aria-hidden="true"><use href="#i-record" /></svg><span>Listen and write it out</span></button>
-      <button type="button" class="btn big" id="record-stop" hidden><svg class="icon" aria-hidden="true"><use href="#i-stop" /></svg><span>Stop and write it out</span></button>
-      <span class="record-time" id="record-time" hidden>0:00</span>
-      <span class="level" id="record-level" hidden aria-hidden="true"><span></span></span>
-    </div>
-    <p class="record-hint" id="record-hint" aria-live="polite"></p>
-
-    <p class="panel-note" id="tx-tip">Works best on one instrument at a time, like a guitar lesson or a solo. Full band mixes give a rougher result to tidy up in the editor.</p>
     <div class="tx-progress" id="tx-progress" hidden>
       <div class="bar"><span></span></div>
       <span id="tx-progress-text" aria-live="polite"></span>
     </div>
-    <div class="dialog-actions" id="tx-actions" hidden>
-      <button type="button" class="btn" id="tx-cancel" hidden>Cancel</button>
-      <button type="button" class="btn primary" id="tx-start">Write it out</button>
-    </div>
+
     <p class="status error" id="audio-error" hidden></p>
+    <p class="record-hint" id="record-hint" aria-live="polite"></p>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn ghost" id="tx-cancel" hidden>Cancel</button>
+      <button type="button" class="btn big" id="record-stop" hidden><svg class="icon" aria-hidden="true"><use href="#i-stop" /></svg><span>Stop and write it out</span></button>
+      <button type="button" class="btn primary big" id="tx-go"><svg class="icon" aria-hidden="true"><use href="#i-record" /></svg><span>Listen and write it out</span></button>
+    </div>
+    <p class="fine-print">Everything happens in your browser: nothing is uploaded.</p>
   </dialog>
 
   <dialog id="shortcuts-dialog" class="dialog" aria-labelledby="shortcuts-title">

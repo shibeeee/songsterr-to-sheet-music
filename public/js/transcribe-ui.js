@@ -1,8 +1,10 @@
 // The "from a recording" flow: choosing a source (YouTube video, audio file,
-// microphone), recording, transcribing in a worker, and the Transcription
-// panel for adjusting the result. The score itself is shown by the app.
+// microphone), listening, transcribing in a worker while the sound comes in,
+// and the Transcription panel for adjusting the result. The score itself is
+// shown by the app.
 
 import { youtubeId, canRecordTab, canRecordMic, startTabRecording, startMicRecording, decodeAudio, forModel, Transcriber } from './audio-input.js';
+import { analyzeRecording } from './analysis.js';
 import { notesToBundle } from './transcribe.js';
 
 // How many notes to keep: what the model counts as a note, and how quiet a
@@ -13,7 +15,10 @@ const SENSITIVITY = {
   fewer: { worker: { onsetThreshold: 0.6, frameThreshold: 0.35, minNoteFrames: 8 }, minVelocity: 0.35 }
 };
 
+const MODE_NAMES = { chords: 'chords', melody: 'the melody', bass: 'the bass line', guitar: 'every note', band: 'guitar and bass' };
+
 const formatTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const formatLeft = (s) => (s < 60 ? `${Math.max(1, Math.ceil(s))} s` : `${Math.ceil(s / 60)} min`);
 
 /** "1:23", "83" or "1:23.5" to seconds; empty is null. */
 export function parseTime(text) {
@@ -25,86 +30,211 @@ export function parseTime(text) {
 }
 
 /**
+ * Draws the notes heard so far: time across, pitch up, a "now" line at the
+ * right while listening.
+ */
+function createNoteRoll(canvas) {
+  let notes = [];
+  let view = { from: 0, to: 10, now: null };
+  let placeholder = '';
+  const colors = () => {
+    const css = getComputedStyle(canvas);
+    return { note: css.getPropertyValue('--roll-note').trim() || '#e5484d', grid: css.getPropertyValue('--roll-grid').trim() || 'rgba(127,127,127,.15)', now: css.getPropertyValue('--roll-now').trim() || '#888' };
+  };
+  function draw() {
+    const ratio = window.devicePixelRatio || 1;
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    if (!width || !height) return;
+    if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+    }
+    const g = canvas.getContext('2d');
+    g.setTransform(ratio, 0, 0, ratio, 0, 0);
+    g.clearRect(0, 0, width, height);
+    const c = colors();
+    const visible = notes.filter((n) => n.start + n.duration >= view.from && n.start <= view.to);
+    let low = 40;
+    let high = 84;
+    if (visible.length) {
+      low = Math.min(low, ...visible.map((n) => n.pitch)) - 2;
+      high = Math.max(high, ...visible.map((n) => n.pitch)) + 2;
+    }
+    const x = (t) => ((t - view.from) / (view.to - view.from)) * width;
+    const rowH = height / (high - low + 1);
+    const y = (p) => height - (p - low + 1) * rowH;
+    // Octave lines (each C).
+    g.fillStyle = c.grid;
+    for (let p = Math.ceil(low / 12) * 12; p <= high; p += 12) g.fillRect(0, Math.round(y(p) + rowH), width, 1);
+    if (!visible.length && placeholder) {
+      g.fillStyle = c.now;
+      g.font = '13px system-ui, sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(placeholder, width / 2, height / 2);
+    }
+    g.fillStyle = c.note;
+    for (const n of visible) {
+      g.globalAlpha = Math.min(1, 0.35 + n.velocity);
+      const w = Math.max(2, x(n.start + n.duration) - x(n.start) - 1);
+      const h = Math.max(2, rowH - 1);
+      g.beginPath();
+      g.roundRect ? g.roundRect(x(n.start), y(n.pitch), w, h, Math.min(2, h / 2)) : g.rect(x(n.start), y(n.pitch), w, h);
+      g.fill();
+    }
+    g.globalAlpha = 1;
+    if (view.now != null) {
+      g.fillStyle = c.now;
+      g.fillRect(Math.round(x(view.now)) - 1, 0, 2, height);
+    }
+  }
+  return {
+    clear() {
+      notes = [];
+      draw();
+    },
+    /** New notes for everything from `from` seconds on. */
+    update(fresh, from = 0) {
+      notes = notes.filter((n) => n.start < from).concat(fresh);
+      draw();
+    },
+    setView(next) {
+      view = { ...view, ...next };
+      draw();
+    },
+    placeholder(text) {
+      placeholder = text;
+      draw();
+    },
+    count: () => notes.length,
+    draw
+  };
+}
+
+/**
  * host: { $, asset, toast, show(bundle) -> Promise<boolean>, isDirty() -> boolean, home() }
  */
 export function createTranscribeUI(host) {
   const { $ } = host;
   const dialog = $('audio-dialog');
   const transcriber = new Transcriber(host.asset('vendor/transcriber/transcriber-worker.js'), host.asset('vendor/transcriber/model/model.json'));
+  const roll = createNoteRoll($('note-roll'));
 
-  const flow = { source: null, recorder: null, timer: 0, blob: null, buffer: null, name: '', url: null, busy: false, player: null, videoId: null, stopAt: null };
-  // The transcription on screen: its notes and the settings that wrote them.
+  const flow = {
+    source: null,
+    phase: 'setup', // setup, listening, writing
+    player: null,
+    videoId: null,
+    name: '',
+    recorder: null,
+    live: null,
+    timer: 0,
+    file: null,
+    buffer: null,
+    url: null,
+    stopAt: null,
+    warmed: false
+  };
+  // The transcription on screen: its notes, what was found in the recording, and the settings that wrote them.
   let current = null;
 
   // -------------------------------------------------------------------------
-  // Dialog
+  // Dialog layout
   // -------------------------------------------------------------------------
 
   function showError(message) {
-    const el = $('audio-error');
-    el.textContent = message || '';
-    el.hidden = !message;
+    $('audio-error').textContent = message || '';
+    $('audio-error').hidden = !message;
   }
 
   function hint(text) {
     $('record-hint').textContent = text || '';
   }
 
-  /** Which parts of the dialog are visible. */
-  function layout({ youtube = false, mic = false, info = false, options = false, trim = false, recorder = false, actions = false, unsupported = false }) {
-    $('audio-youtube').hidden = !youtube;
-    $('audio-mic').hidden = !mic;
-    $('recording-info').hidden = !info;
-    $('tx-options').hidden = !options;
-    $('tx-from-field').hidden = !trim;
-    $('tx-to-field').hidden = !trim;
-    $('audio-recorder').hidden = !recorder;
-    $('tx-actions').hidden = !actions;
-    $('youtube-unsupported').hidden = !unsupported;
+  const mode = () => dialog.querySelector('input[name="tx-mode-start"]:checked')?.value || 'chords';
+
+  function setProgress(value, text) {
+    $('tx-progress').hidden = value == null;
+    if (value == null) return;
+    $('tx-progress').querySelector('.bar span').style.width = `${Math.round(value * 100)}%`;
+    $('tx-progress-text').textContent = text;
   }
 
-  function resetRecorderUI() {
-    $('record-start').hidden = false;
-    $('record-start').disabled = false;
-    $('record-stop').hidden = true;
-    $('record-time').hidden = true;
-    $('record-level').hidden = true;
-    hint('');
+  /** Shows the parts of the dialog for the current source and phase. */
+  function layout() {
+    const { source, phase } = flow;
+    const setup = phase === 'setup';
+    for (const tab of dialog.querySelectorAll('.source-tab')) {
+      const on = tab.dataset.source === source;
+      tab.setAttribute('aria-selected', String(on));
+      tab.disabled = !setup && !on;
+    }
+    const youtubeOk = canRecordTab();
+    $('audio-youtube').hidden = source !== 'youtube';
+    $('youtube-unsupported').hidden = source !== 'youtube' || youtubeOk;
+    $('youtube-form').hidden = source !== 'youtube' || !setup;
+    $('audio-file').hidden = source !== 'file';
+    $('file-drop').hidden = source !== 'file' || !!flow.buffer;
+    $('recording-info').hidden = source !== 'file' || !flow.buffer;
+    $('audio-mic').hidden = source !== 'mic' || !setup;
+    $('mode-picker').hidden = !setup;
+    $('tx-part').hidden = !setup || source === 'mic';
+    $('listen').hidden = setup;
+    $('record-stop').hidden = phase !== 'listening';
+    $('tx-cancel').hidden = phase !== 'writing';
+    const go = $('tx-go');
+    go.hidden = !setup;
+    const label = go.querySelector('span');
+    if (source === 'youtube') label.textContent = 'Listen and write it out';
+    else if (source === 'mic') label.textContent = 'Start recording';
+    else label.textContent = 'Write it out';
+    go.disabled =
+      (source === 'youtube' && (!youtubeOk || !flow.videoId)) || (source === 'file' && !flow.buffer) || (source === 'mic' && !canRecordMic());
+    go.querySelector('svg use').setAttribute('href', source === 'file' ? '#i-music' : '#i-record');
+    go.classList.toggle('record', source !== 'file');
+  }
+
+  function setupHint() {
+    if (flow.source === 'youtube') {
+      if (!canRecordTab()) hint('');
+      else if (!flow.videoId) hint('Paste a link to a YouTube video to begin.');
+      else hint('When your browser asks what to share, choose this tab and keep "Share tab audio" on. The video plays by itself.');
+    } else if (flow.source === 'mic') hint(canRecordMic() ? 'Your browser will ask to use the microphone.' : '');
+    else hint(flow.buffer ? '' : '');
   }
 
   /** Opens the dialog for a source: 'youtube' (with an optional link), 'mic' or 'file'. */
   async function open(source, { link = '', file = null } = {}) {
-    if (flow.busy) return;
-    stopRecording(true);
+    if (flow.phase !== 'setup') return;
+    if (!dialog.open) dialog.showModal();
+    if (!flow.warmed) {
+      // Get the listener ready while the person chooses.
+      flow.warmed = true;
+      transcriber.warm();
+    }
+    await selectSource(source);
+    if (source === 'youtube' && link) {
+      $('youtube-input').value = link;
+      loadVideo(link);
+    }
+    if (source === 'file' && file) await useFile(file);
+  }
+
+  async function selectSource(source) {
+    if (flow.phase !== 'setup') return;
     flow.source = source;
     showError('');
-    resetRecorderUI();
-    $('tx-progress').hidden = true;
-    $('tx-from').value = '';
-    $('tx-to').value = '';
-    if (!dialog.open) dialog.showModal();
-    if (source === 'youtube') {
-      const supported = canRecordTab();
-      layout({ youtube: true, options: supported, trim: supported, recorder: supported, unsupported: !supported });
-      $('record-start').querySelector('span').textContent = 'Listen and write it out';
-      $('youtube-input').value = link;
-      if (link) loadVideo(link);
-      else {
-        clearVideo();
-        $('youtube-input').focus();
-        if (supported) hint('Paste a YouTube link above to begin.');
-      }
-    } else if (source === 'mic') {
-      layout({ mic: true, options: true, recorder: true });
-      if (!canRecordMic()) showError("This browser can't record sound. Try Chrome, Edge, Firefox or Safari.");
-      $('record-start').querySelector('span').textContent = 'Start recording';
-    } else if (source === 'file' && file) {
-      layout({});
-      await useAudio(file, file.name.replace(/\.[^.]+$/, ''));
-      layout({ info: true, options: true, trim: true, actions: true });
-      $('tx-start').focus();
-    }
+    setProgress(null);
+    if (source !== 'youtube') flow.player?.pauseVideo?.();
+    layout();
+    setupHint();
+    if (source === 'youtube' && !flow.videoId) setTimeout(() => $('youtube-input').focus());
   }
+
+  // -------------------------------------------------------------------------
+  // YouTube
+  // -------------------------------------------------------------------------
 
   // YouTube's player API lets the page start the video and notice when it ends.
   let youtubeApi = null;
@@ -130,6 +260,7 @@ export function createTranscribeUI(host) {
   function clearVideo() {
     flow.player?.destroy?.();
     flow.player = null;
+    flow.videoId = null;
     const holder = document.createElement('div');
     holder.id = 'youtube-player';
     $('youtube-frame').replaceChildren(holder);
@@ -139,14 +270,17 @@ export function createTranscribeUI(host) {
   async function loadVideo(link) {
     const id = youtubeId(link);
     if (!id) {
-      showError("That doesn't look like a YouTube link. It should look like youtube.com/watch?v=... or youtu.be/...");
+      showError("That doesn't look like a YouTube link. It should look like youtube.com/watch?v=… or youtu.be/…");
       return;
     }
+    if (id === flow.videoId) return;
     showError('');
     clearVideo();
     $('youtube-frame').hidden = false;
     flow.name = 'YouTube video';
     flow.videoId = id;
+    layout();
+    setupHint();
     const YT = await loadYouTubeApi();
     if (flow.videoId !== id) return; // another link was loaded meanwhile
     if (YT) {
@@ -157,7 +291,7 @@ export function createTranscribeUI(host) {
         events: {
           onStateChange: (e) => {
             // The video ended while listening: that's the whole part.
-            if (e.data === YT.PlayerState.ENDED && flow.recorder) finishRecording();
+            if (e.data === YT.PlayerState.ENDED && flow.phase === 'listening') finishListening();
           }
         }
       });
@@ -170,46 +304,96 @@ export function createTranscribeUI(host) {
       frame.allowFullscreen = true;
       $('youtube-frame').replaceChildren(frame);
     }
-    if (canRecordTab()) hint('Press Listen and write it out. When your browser asks, choose this tab and keep "Share tab audio" on.');
     // The video's title, for the score (YouTube allows this lookup from any page).
     try {
       const res = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${id}`)}`);
       if (res.ok) {
         const info = await res.json();
-        if (info.title) flow.name = info.title;
+        if (info.title && flow.videoId === id) flow.name = info.title;
       }
     } catch {
       // keep the plain name
     }
   }
 
-  async function startRecording() {
+  // -------------------------------------------------------------------------
+  // Files
+  // -------------------------------------------------------------------------
+
+  async function useFile(file) {
+    showError('');
+    hint('Reading the file…');
+    try {
+      const buffer = await decodeAudio(file);
+      flow.buffer = buffer;
+      flow.file = file;
+      flow.name = file.name.replace(/\.[^.]+$/, '') || 'Recording';
+      if (flow.url) URL.revokeObjectURL(flow.url);
+      flow.url = URL.createObjectURL(file);
+      $('recording-name').textContent = flow.name;
+      $('recording-length').textContent = `(${formatTime(buffer.duration)})`;
+      $('recording-preview').src = flow.url;
+      hint('');
+    } catch (err) {
+      hint('');
+      showError(err.message);
+    }
+    layout();
+    if (flow.buffer) $('tx-go').focus();
+  }
+
+  function forgetFile() {
+    flow.buffer = null;
+    flow.file = null;
+    $('recording-preview').removeAttribute('src');
+    if (flow.url) URL.revokeObjectURL(flow.url);
+    flow.url = null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Listening
+  // -------------------------------------------------------------------------
+
+  function readPart(duration = Infinity) {
+    const from = parseTime($('tx-from').value) ?? 0;
+    const to = parseTime($('tx-to').value);
+    if (!Number.isFinite(from) || (to !== null && (!Number.isFinite(to) || to <= from + 0.9)) || from >= duration) {
+      showError('Check the From and To times (like 0:30 and 1:15), at least a second apart.');
+      return null;
+    }
+    return { from, to };
+  }
+
+  const workerSettings = () => SENSITIVITY.normal.worker;
+
+  async function startListening() {
     showError('');
     const youtube = flow.source === 'youtube';
-    let from = 0;
-    let to = null;
+    let part = { from: 0, to: null };
     if (youtube) {
-      if ($('youtube-frame').hidden) {
-        if (youtubeId($('youtube-input').value)) await loadVideo($('youtube-input').value);
-        else {
-          showError('Paste a YouTube link first.');
-          return;
-        }
-      }
-      from = parseTime($('tx-from').value) ?? 0;
-      to = parseTime($('tx-to').value);
-      if (!Number.isFinite(from) || (to !== null && (!Number.isFinite(to) || to <= from))) {
-        showError('Check the From and To times (like 0:30 and 1:15).');
-        return;
-      }
+      part = readPart();
+      if (!part) return;
       hint('Your browser is asking what to share: choose this tab and keep "Share tab audio" on.');
     }
-    $('record-start').disabled = true;
+    $('tx-go').disabled = true;
+    roll.clear();
+    roll.placeholder('Notes appear here a moment after they are heard');
+    const live = transcriber.live(workerSettings(), {
+      onPartial: ({ notes, from }) => roll.update(notes, from),
+      onProgress: (p) => {
+        flow.heard = p.seconds;
+        flow.onProgress?.(p);
+      }
+    });
+    flow.onProgress = null;
+    live.result.catch(() => {}); // handled when finishing
+    flow.heard = 0;
     try {
-      flow.recorder = youtube ? await startTabRecording() : await startMicRecording();
+      flow.recorder = youtube ? await startTabRecording({ onSamples: (s, rate) => live.push(s, rate) }) : await startMicRecording({ onSamples: (s, rate) => live.push(s, rate) });
     } catch (err) {
-      $('record-start').disabled = false;
-      hint('');
+      transcriber.cancel();
+      $('tx-go').disabled = false;
+      setupHint();
       const denied = err?.name === 'NotAllowedError' || err?.name === 'SecurityError';
       showError(
         denied
@@ -220,34 +404,39 @@ export function createTranscribeUI(host) {
       );
       return;
     }
-    flow.stopAt = to;
+    flow.live = flow.recorder.live ? live : null;
+    if (!flow.recorder.live) transcriber.cancel(); // this browser can't stream: transcribe after recording
+    flow.phase = 'listening';
+    flow.stopAt = part.to;
+    flow.mode = mode();
     const player = youtube ? flow.player : null;
     if (player?.playVideo) {
-      player.seekTo(from, true);
+      player.seekTo(part.from, true);
       player.playVideo();
     }
-    $('record-start').hidden = true;
-    $('record-stop').hidden = false;
-    $('record-time').hidden = false;
-    $('record-level').hidden = false;
+    layout();
     hint(
       youtube
         ? player?.playVideo
-          ? `Listening while the video plays. It stops by itself ${to ? `at ${formatTime(to)}` : 'at the end'}, or press Stop.`
+          ? `Listening while the video plays. It stops by itself ${part.to ? `at ${formatTime(part.to)}` : 'at the end'}, or press Stop.`
           : 'Listening. Press play on the video, then Stop when the part is over.'
         : 'Recording. Press Stop when you are done.'
     );
-    flow.recorder.onEnd(() => finishRecording());
+    $('listen-note').textContent = `Writing out ${MODE_NAMES[flow.mode]}`;
+    flow.recorder.onEnd(() => finishListening());
     let quiet = 0;
     const tick = () => {
-      if (!flow.recorder) return;
+      if (flow.phase !== 'listening') return;
       const level = flow.recorder.level();
+      const seconds = flow.recorder.seconds();
       $('record-level').firstElementChild.style.width = `${Math.round(level * 100)}%`;
-      $('record-time').textContent = formatTime(flow.recorder.seconds());
+      $('record-time').textContent = formatTime(seconds);
+      roll.setView({ from: Math.max(0, seconds - 12), to: Math.max(12, seconds), now: seconds });
       quiet = level > 0.02 ? 0 : quiet + 1;
-      if (youtube && quiet === 240) hint('No sound yet. Is the video playing? If not, press play on it.');
+      if (quiet === 240) hint(youtube ? 'No sound yet. Is the video playing? If not, press play on it.' : 'No sound yet. Is the microphone on and near the music?');
+      if (quiet === 0 && seconds > 4 && !roll.count() && flow.live && flow.heard > 3) hint('Listening… notes will appear here as they are heard.');
       if (player?.getCurrentTime && flow.stopAt && player.getCurrentTime() >= flow.stopAt) {
-        finishRecording();
+        finishListening();
         return;
       }
       flow.timer = requestAnimationFrame(tick);
@@ -255,99 +444,134 @@ export function createTranscribeUI(host) {
     tick();
   }
 
-  function stopRecording(discard = false) {
+  function stopRecorder() {
     cancelAnimationFrame(flow.timer);
     const recorder = flow.recorder;
     flow.recorder = null;
-    if (!recorder) return null;
-    const done = recorder.stop();
-    return discard ? null : done;
+    return recorder ? { recorder, done: recorder.stop() } : null;
   }
 
-  async function finishRecording() {
-    const recorder = flow.recorder;
-    const done = stopRecording();
-    if (!done) return;
+  async function finishListening() {
+    if (flow.phase !== 'listening') return;
+    const stopped = stopRecorder();
     flow.player?.pauseVideo?.();
-    resetRecorderUI();
-    const seconds = recorder.seconds();
-    const blob = await done;
-    if (seconds < 1.5 || !blob.size) {
-      showError('That recording is too short. Record at least a few seconds.');
-      return;
-    }
-    if (!(await useAudio(blob, flow.source === 'youtube' ? flow.name : 'Recording'))) return;
-    // The part to transcribe was chosen before listening: write it out straight away.
-    await startTranscription({ trim: false });
-  }
-
-  async function useAudio(blob, name) {
-    showError('');
-    flow.busy = true;
-    try {
-      flow.buffer = await decodeAudio(blob);
-    } catch (err) {
-      showError(err.message);
-      return false;
-    } finally {
-      flow.busy = false;
-    }
-    flow.blob = blob;
-    flow.name = name || 'Recording';
-    if (flow.url) URL.revokeObjectURL(flow.url);
-    flow.url = URL.createObjectURL(blob);
-    $('recording-name').textContent = flow.name;
-    $('recording-length').textContent = `(${formatTime(flow.buffer.duration)})`;
-    $('recording-preview').src = flow.url;
-    return true;
-  }
-
-  async function startTranscription({ trim = true } = {}) {
-    const from = trim ? parseTime($('tx-from').value) ?? 0 : 0;
-    const to = trim ? parseTime($('tx-to').value) ?? flow.buffer.duration : flow.buffer.duration;
-    if (!Number.isFinite(from) || !Number.isFinite(to) || to - from < 1) {
-      showError('Check the From and To times (like 0:30 and 1:15), at least a second apart.');
-      return;
-    }
-    showError('');
-    flow.busy = true;
-    $('tx-actions').hidden = false;
-    $('tx-start').hidden = true;
-    $('tx-cancel').hidden = false;
-    $('tx-progress').hidden = false;
-    $('record-start').disabled = true;
-    const setProgress = (value, text) => {
-      $('tx-progress').querySelector('.bar span').style.width = `${Math.round(value * 100)}%`;
-      $('tx-progress-text').textContent = text;
-    };
-    setProgress(0, 'Getting the listener ready…');
+    flow.phase = 'writing';
+    layout();
     hint('');
-    const started = performance.now();
-    const settings = { mode: $('tx-mode-start').value, beatsPerBar: Number($('tx-meter-start').value), sensitivity: 'normal', grid: 16, barShift: 0, bpm: null };
+    const seconds = stopped.recorder.seconds();
+    const blob = await stopped.done;
+    if (seconds < 1.5 || !blob.size) {
+      backToSetup('That recording is too short. Record at least a few seconds.');
+      transcriber.cancel();
+      return;
+    }
+    const name = flow.source === 'youtube' ? flow.name : 'Recording';
+    const url = URL.createObjectURL(blob);
     try {
-      const audio = await forModel(flow.buffer, from, to);
-      const length = audio.length / 22050;
-      const result = await transcriber.transcribe(audio, SENSITIVITY.normal.worker, (value) => {
-        const elapsed = (performance.now() - started) / 1000;
-        // The first part includes warming up, so estimate only after that.
-        const left = value > 0.2 ? (elapsed / value) * (1 - value) : null;
-        setProgress(value, `Writing out the notes… ${Math.round(value * 100)}%${left != null && left > 3 ? `, about ${left < 60 ? `${Math.ceil(left)} s` : `${Math.ceil(left / 60)} min`} left` : ''}`);
-      });
-      if (!result.notes.length) throw new Error('No notes were heard. Check that the recording has sound, or try a louder part.');
-      current = { id: result.id, notes: result.notes, settings, name: flow.name, url: flow.url, length, backend: result.backend, detectedBpm: null };
-      flow.url = null; // the panel's player owns it now
-      setProgress(1, 'Laying out the music…');
-      await render();
-      dialog.close();
+      let result;
+      if (flow.live) {
+        const live = flow.live;
+        flow.live = null;
+        live.end();
+        // Usually only the last moment is left; on a slow computer, more.
+        const started = performance.now();
+        const heardAtStop = flow.heard;
+        setProgress(Math.min(0.99, heardAtStop / seconds), 'Writing out the last notes…');
+        flow.onProgress = ({ seconds: heard }) => {
+          const left = Math.max(0, seconds - heard);
+          const elapsed = (performance.now() - started) / 1000;
+          const speed = elapsed > 2 && heard > heardAtStop ? (heard - heardAtStop) / elapsed : null;
+          setProgress(Math.min(0.99, heard / seconds), left > 3 && speed ? `Writing out the notes… about ${formatLeft(left / speed)} left` : 'Writing out the last notes…');
+        };
+        result = await live.result;
+      } else {
+        const buffer = await decodeAudio(blob);
+        result = await runModel(await forModel(buffer));
+      }
+      await complete(result, { name, url, mode: flow.mode });
     } catch (err) {
-      if (!err.cancelled) showError(`Couldn't transcribe this recording: ${err.message || err}`);
-    } finally {
-      flow.busy = false;
-      $('record-start').disabled = false;
-      $('tx-start').hidden = false;
-      $('tx-cancel').hidden = true;
-      $('tx-actions').hidden = flow.source !== 'file';
-      if (dialog.open) $('tx-progress').hidden = true;
+      URL.revokeObjectURL(url);
+      if (!err.cancelled) backToSetup(`Couldn't transcribe this recording: ${err.message || err}`);
+    }
+  }
+
+  /** Transcribes a whole recording, showing progress and the notes as they are found. */
+  function runModel(audio) {
+    const started = performance.now();
+    const total = audio.length / 22050;
+    roll.clear();
+    roll.placeholder('Notes appear here as they are found');
+    roll.setView({ from: 0, to: total, now: null });
+    setProgress(0, 'Getting the listener ready…');
+    return transcriber.transcribe(audio, workerSettings(), {
+      onPartial: ({ notes, from }) => roll.update(notes, from),
+      onProgress: ({ value }) => {
+        if (value == null) return;
+        const elapsed = (performance.now() - started) / 1000;
+        const left = value > 0.1 ? (elapsed / value) * (1 - value) : null;
+        setProgress(value, `Writing out the notes… ${Math.round(value * 100)}%${left != null && left > 3 ? `, about ${formatLeft(left)} left` : ''}`);
+        roll.setView({ now: value * total });
+      }
+    });
+  }
+
+  async function transcribeFile() {
+    const part = readPart(flow.buffer.duration);
+    if (!part) return;
+    showError('');
+    flow.phase = 'writing';
+    flow.mode = mode();
+    layout();
+    $('listen-note').textContent = `Writing out ${MODE_NAMES[flow.mode]}`;
+    $('record-time').textContent = formatTime((part.to ?? flow.buffer.duration) - part.from);
+    try {
+      const audio = await forModel(flow.buffer, part.from, part.to ?? flow.buffer.duration);
+      const result = await runModel(audio);
+      const url = flow.url;
+      flow.url = null; // the panel's player owns it now
+      await complete(result, { name: flow.name, url, mode: flow.mode, offset: part.from });
+      forgetFile();
+    } catch (err) {
+      if (!err.cancelled) backToSetup(`Couldn't transcribe this recording: ${err.message || err}`);
+    }
+  }
+
+  function backToSetup(message = '') {
+    flow.phase = 'setup';
+    setProgress(null);
+    layout();
+    setupHint();
+    showError(message);
+  }
+
+  /** Finds the beats, chords and bars, writes the music and shows it. */
+  async function complete(result, { name, url, mode: chosen, offset = 0 }) {
+    if (!result.notes.length) throw new Error('No notes were heard. Check that the recording has sound, or try a louder part.');
+    setProgress(1, 'Laying out the music…');
+    await new Promise((r) => setTimeout(r, 30)); // let the message show
+    let analysis = null;
+    try {
+      analysis = analyzeRecording({ notes: result.notes, ...result.features });
+    } catch (err) {
+      console.warn('Beat tracking failed; using a steady tempo.', err);
+    }
+    if (current?.url) URL.revokeObjectURL(current.url);
+    current = {
+      id: result.id,
+      notes: result.notes,
+      analysis,
+      name,
+      url,
+      offset,
+      settings: { mode: chosen, meter: 'auto', tempoScale: 1, bpm: null, beatTime: null, barShift: 0, grid: null, sensitivity: 'normal' }
+    };
+    const shown = await render();
+    flow.phase = 'setup';
+    setProgress(null);
+    if (shown) {
+      dialog.close();
+    } else {
+      backToSetup("Couldn't show the music.");
     }
   }
 
@@ -359,20 +583,19 @@ export function createTranscribeUI(host) {
     const s = current.settings;
     const bundle = notesToBundle(current.notes, {
       mode: s.mode,
-      beatsPerBar: s.beatsPerBar,
+      analysis: current.analysis,
+      tempoScale: s.tempoScale,
+      bpm: s.bpm || undefined,
+      beatTime: s.beatTime ?? undefined,
+      beatsPerBar: s.meter === 'auto' ? undefined : Number(s.meter),
       barShift: s.barShift,
-      grid: s.grid,
-      bpm: s.bpm,
-      beatTime: s.beatTime,
+      grid: s.grid || undefined,
       minVelocity: SENSITIVITY[s.sensitivity].minVelocity,
       title: current.name,
       artist: 'Transcribed from a recording'
     });
-    // Keep the tempo and beat found the first time, so other changes don't move them.
-    s.bpm = bundle.transcription.bpm;
-    s.beatTime = bundle.transcription.beatTime;
-    if (current.detectedBpm == null) current.detectedBpm = s.bpm;
     current.bundle = bundle;
+    current.written = bundle.transcription;
     const shown = await host.show(bundle);
     if (shown) syncPanel();
     return shown;
@@ -380,12 +603,14 @@ export function createTranscribeUI(host) {
 
   function syncPanel() {
     const s = current.settings;
+    const w = current.written;
     if ($('tx-audio').getAttribute('src') !== current.url) $('tx-audio').src = current.url;
     $('tx-mode').value = s.mode;
-    $('tx-bpm').value = String(s.bpm);
-    $('tx-bpm-note').textContent = current.detectedBpm && current.detectedBpm !== s.bpm ? `heard ${current.detectedBpm}` : '';
-    $('tx-meter').value = String(s.beatsPerBar);
-    $('tx-grid').value = String(s.grid);
+    $('tx-bpm').value = String(w.bpm);
+    $('tx-bpm-note').textContent = w.followsBeats ? 'follows the recording' : 'steady';
+    $('tx-meter').value = s.meter;
+    $('tx-meter').options[0].textContent = s.meter === 'auto' ? `Automatic (${w.beatsPerBar})` : 'Automatic';
+    $('tx-grid').value = String(w.grid);
     $('tx-sensitivity').value = s.sensitivity;
   }
 
@@ -412,11 +637,20 @@ export function createTranscribeUI(host) {
     await render();
   }
 
+  /** Half or double tempo: follows the beats found when it can, else a steady pulse. */
+  function scaleTempo(factor) {
+    if (!current) return;
+    const s = current.settings;
+    const scale = s.tempoScale * factor;
+    if (!s.bpm && current.analysis && scale >= 0.5 && scale <= 2) update({ tempoScale: scale });
+    else update({ bpm: Math.max(30, Math.min(300, Math.round(current.written.bpm * factor))), beatTime: current.written.beatTime });
+  }
+
   /** Called whenever the app shows a score: the panel only belongs to transcriptions. */
   function scoreShown(bundle) {
     const isTranscription = !!current && bundle === current.bundle;
     $('tx-panel').hidden = !isTranscription;
-    if (!isTranscription && current && !flow.busy) {
+    if (!isTranscription && current && flow.phase === 'setup') {
       // Another song opened: let go of the recording.
       $('tx-audio').removeAttribute('src');
       if (current.url) URL.revokeObjectURL(current.url);
@@ -430,37 +664,68 @@ export function createTranscribeUI(host) {
 
   $('audio-close').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => {
-    stopRecording(true);
-    if (flow.busy) transcriber.cancel();
+    if (flow.phase === 'listening') stopRecorder();
+    if (flow.phase !== 'setup') transcriber.cancel();
+    flow.live = null;
+    flow.phase = 'setup';
     clearVideo();
-    flow.videoId = null;
-    resetRecorderUI();
+    forgetFile();
+    setProgress(null);
+    showError('');
   });
+  for (const tab of dialog.querySelectorAll('.source-tab')) tab.addEventListener('click', () => selectSource(tab.dataset.source));
   $('youtube-form').addEventListener('submit', (e) => {
     e.preventDefault();
     loadVideo($('youtube-input').value);
   });
   $('youtube-input').addEventListener('paste', () => setTimeout(() => youtubeId($('youtube-input').value) && loadVideo($('youtube-input').value)));
-  $('switch-to-mic').addEventListener('click', () => open('mic'));
-  $('record-start').addEventListener('click', startRecording);
-  $('record-stop').addEventListener('click', finishRecording);
-  $('tx-start').addEventListener('click', () => startTranscription());
+  $('switch-to-mic').addEventListener('click', () => selectSource('mic'));
+  $('dialog-file-input').addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) useFile(file);
+  });
+  const drop = $('file-drop');
+  drop.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    drop.classList.add('over');
+  });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    drop.classList.remove('over');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) useFile(file);
+  });
+  $('file-change').addEventListener('click', () => {
+    forgetFile();
+    layout();
+    $('dialog-file-input').click();
+  });
+  $('tx-go').addEventListener('click', () => {
+    if (flow.source === 'file') transcribeFile();
+    else startListening();
+  });
+  $('record-stop').addEventListener('click', finishListening);
   $('tx-cancel').addEventListener('click', () => {
     transcriber.cancel();
-    $('tx-progress').hidden = true;
+    backToSetup('');
   });
+  window.addEventListener('resize', () => !$('listen').hidden && roll.draw());
 
-  $('tx-mode').addEventListener('change', (e) => update({ mode: e.target.value }));
-  $('tx-meter').addEventListener('change', (e) => update({ beatsPerBar: Number(e.target.value), barShift: 0 }));
+  $('tx-mode').addEventListener('change', (e) => update({ mode: e.target.value, grid: null }));
+  $('tx-meter').addEventListener('change', (e) => update({ meter: e.target.value, barShift: 0 }));
   $('tx-grid').addEventListener('change', (e) => update({ grid: Number(e.target.value) }));
   $('tx-sensitivity').addEventListener('change', (e) => update({ sensitivity: e.target.value }));
   $('tx-bpm').addEventListener('change', (e) => {
     const bpm = Math.round(Number(e.target.value));
-    if (bpm >= 30 && bpm <= 300) update({ bpm });
+    if (bpm >= 30 && bpm <= 300) update({ bpm, beatTime: current?.written.beatTime });
     else syncPanel();
   });
-  $('tx-half').addEventListener('click', () => current && update({ bpm: Math.max(30, Math.round(current.settings.bpm / 2)) }));
-  $('tx-double').addEventListener('click', () => current && update({ bpm: Math.min(300, current.settings.bpm * 2) }));
+  $('tx-half').addEventListener('click', () => scaleTempo(0.5));
+  $('tx-double').addEventListener('click', () => scaleTempo(2));
   $('tx-shift-left').addEventListener('click', () => current && update({ barShift: current.settings.barShift + 1 }));
   $('tx-shift-right').addEventListener('click', () => current && update({ barShift: current.settings.barShift - 1 }));
   $('tx-new').addEventListener('click', () => host.home());
