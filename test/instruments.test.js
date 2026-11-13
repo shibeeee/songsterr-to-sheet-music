@@ -120,3 +120,13 @@ test('the new part saves and exports like any other track', () => {
   const back = alphaTab.importer.ScoreLoader.loadScoreFromBytes(bytes, settings());
   assert.equal(back.tracks[report.index].name, 'Trumpet in B♭');
 });
+
+test('very low notes also show the octave up, in parentheses', () => {
+  const score = bassScore([[q([{ string: 3, fret: 0 }]), q([{ string: 3, fret: 0, tie: true }]), q([{ string: 2, fret: 3 }]), q([{ string: 1, fret: 5 }])]]); // E1 E1~ C2 G2
+  const report = convertToInstrument(m, score, 0, 'tuba', { lowOctave: 36 });
+  const out = rebuildScore(alphaTab, score, settings());
+  const beats = out.tracks[report.index].staves[0].bars[0].voices[0].beats;
+  const show = (b) => b.notes.map((n) => pitchName(n.realValue) + (n.isGhost ? '()' : '') + (n.isTieDestination ? '~' : '')).sort().join('+');
+  assert.deepEqual(beats.map(show), ['E1+E2()', 'E1~+E2()~', 'C2+C3()', 'G2']);
+  assert.equal(report.octavesAdded, 2, 'the tied E counts once');
+});

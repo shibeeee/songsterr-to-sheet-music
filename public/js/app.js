@@ -21,6 +21,7 @@ import { createTranscribeUI } from './transcribe-ui.js';
 import { SOUND_SETS, fetchSound, isSoundCached } from './sound.js';
 import { optimizeFingering, convertToFourStringBass, canConvertToFourString, fourStringBlocker } from './fingering.js';
 import { INSTRUMENTS, convertToInstrument, suggestInstrument, pitchName, transpositionText } from './instruments.js';
+import { KEY_CHOICES, keyLabel, scoreHasKey, concertKey, detectScoreKey, setScoreKey, applySpelling } from './keys.js';
 
 const $ = (id) => document.getElementById(id);
 // Resolve against the page so the app also works from a sub-path
@@ -55,6 +56,8 @@ const defaults = {
   fingerStyle: 'fewest', // what the fingering optimizer aims for
   lowNotes: 'phrase', // 4-string conversion: move whole riffs, or only the low notes
   instrument: 'tuba', // the last instrument a part was made for
+  accidentals: 'flats', // black-key notes outside the key: 'flats', 'sharps' or 'key'
+  lowOctave: '36', // tuba and other low parts: notes at or below this also show an octave up ('off' for none)
   tipDismissed: false,
   onlyShown: false, // mute tracks that aren't shown
   volume: 90
@@ -393,11 +396,13 @@ async function showScore(score, warnings, { preferredTrack = 0, explicitTrack = 
   editUI.reset();
 
   const original = score;
+  addKeySignature(original);
   const saved = key ? await loadEdits(key) : null;
   let restored = null;
   if (saved) {
     try {
       score = alphaTab.model.JsonConverter.jsonToScore(saved.json, api.settings);
+      addKeySignature(score);
       restored = saved;
     } catch (err) {
       console.warn('Saved edits could not be read; showing the original', err);
@@ -521,6 +526,7 @@ function formatTime(ms) {
 }
 
 function updateSongHead() {
+  syncKeyControl();
   const score = state.score;
   $('song-title').textContent = score.title || 'Untitled';
   $('song-artist').textContent = score.artist || '';
@@ -685,7 +691,18 @@ function withCleanScore(fn) {
   }
 }
 
+/**
+ * Gives a song with no key signature (Songsterr tabs have none) the key its
+ * notes are in, when they clearly are in one.
+ */
+function addKeySignature(score) {
+  if (scoreHasKey(score)) return;
+  const key = detectScoreKey(score);
+  if (key && key.fifths && key.confidence >= 0.75) setScoreKey(alphaTab.model, score, key.fifths, key.minor);
+}
+
 function applyStaffOptions() {
+  applySpelling(alphaTab.model, state.score, options.accidentals);
   const view = options.view;
   for (const track of state.score.tracks) {
     for (const staff of track.staves) {
@@ -894,6 +911,8 @@ function syncInstruments() {
 function updateInstrumentButton() {
   const inst = INSTRUMENTS[$('inst-target').value];
   if (!inst) return;
+  $('inst-low-field').hidden = !isLowInstrument(inst);
+  $('inst-low').value = options.lowOctave;
   // "an E♭ tuba", "a euphonium", "a trumpet"
   const name = inst.name.replace(/ in [A-G]♭?$/, '');
   const spoken = /^[A-G][♭♯] /.test(name) ? name.slice(0, 3) + name.slice(3).toLowerCase() : name.toLowerCase();
@@ -905,10 +924,14 @@ function updateInstrumentButton() {
   $('inst-note').textContent = `${reads} Comfortable range about ${pitchName(low)} to ${pitchName(high)}. ${inst.chords ? 'Chords are kept.' : 'It plays one note at a time, so chords become their ' + ((low + high) / 2 < 55 ? 'lowest' : 'top') + ' note.'}`;
 }
 
+/** Whether an instrument is a low one, for which very low notes get an optional octave. */
+const isLowInstrument = (inst) => !inst.chords && (inst.comfortable[0] + inst.comfortable[1]) / 2 < 55;
+
 function runInstrument(index = Number($('inst-track').value), key = $('inst-target').value, octave = $('inst-octave').value) {
   let report = null;
+  const lowOctave = isLowInstrument(INSTRUMENTS[key]) && options.lowOctave !== 'off' ? Number(options.lowOctave) : null;
   commitEdit((score, m) => {
-    report = convertToInstrument(m, score, index, key, { octave: octave === 'auto' ? 'auto' : Number(octave) });
+    report = convertToInstrument(m, score, index, key, { octave: octave === 'auto' ? 'auto' : Number(octave), lowOctave });
     return undefined;
   });
   if (!report) return;
@@ -918,6 +941,7 @@ function runInstrument(index = Number($('inst-track').value), key = $('inst-targ
   if (report.octave) parts.push(`moved ${Math.abs(report.octave)} octave${Math.abs(report.octave) === 1 ? '' : 's'} ${report.octave > 0 ? 'up' : 'down'} to fit`);
   const folded = report.foldedUp + report.foldedDown;
   if (folded) parts.push(`${folded} note${folded === 1 ? '' : 's'} moved an octave to stay in range`);
+  if (report.octavesAdded) parts.push(`${report.octavesAdded} low note${report.octavesAdded === 1 ? '' : 's'} also shown an octave up`);
   if (report.chordsReduced) parts.push(`${report.chordsReduced} chord${report.chordsReduced === 1 ? '' : 's'} played as one note`);
   if (report.lowest != null) parts.push(`range ${pitchName(report.lowest)} to ${pitchName(report.highest)}${report.uncomfortable ? ` (${report.uncomfortable} note${report.uncomfortable === 1 ? '' : 's'} outside the easy range)` : ''}`);
   // Show the new part on its own; the other tracks are a tick away.
@@ -1103,7 +1127,35 @@ function relayout() {
   api.render();
 }
 
+function syncKeyControl() {
+  const select = $('opt-key');
+  if (!select.options.length) {
+    select.append(Object.assign(document.createElement('option'), { value: 'detect', textContent: 'Find it from the notes' }));
+    for (const fifths of KEY_CHOICES) select.append(Object.assign(document.createElement('option'), { value: String(fifths), textContent: keyLabel(fifths) }));
+  }
+  if (state.score) select.value = String(concertKey(state.score));
+}
+
+function changeKey(value) {
+  let chosen = null;
+  commitEdit((score, m) => {
+    if (value === 'detect') {
+      const found = detectScoreKey(score);
+      chosen = found ? found.fifths : 0;
+      setScoreKey(m, score, chosen, found?.minor);
+    } else {
+      chosen = Number(value);
+      setScoreKey(m, score, chosen);
+    }
+    return editUI.selection() ?? undefined;
+  });
+  if (chosen != null) toast(`Key signature: ${keyLabel(chosen)}`, { label: 'Undo', run: undoEdit });
+  syncKeyControl();
+}
+
 function syncControls() {
+  syncKeyControl();
+  document.querySelector(`input[name="accidentals"][value="${options.accidentals}"]`).checked = true;
   document.querySelector(`input[name="view"][value="${options.view}"]`).checked = true;
   document.querySelector(`input[name="layout"][value="${options.layout}"]`).checked = true;
   $('opt-rhythm').checked = options.rhythm;
@@ -1695,6 +1747,10 @@ window.addEventListener('popstate', () => {
   else showView('home');
 });
 
+$('opt-key').addEventListener('change', (e) => changeKey(e.target.value));
+for (const input of document.querySelectorAll('input[name="accidentals"]')) {
+  input.addEventListener('change', () => setOption('accidentals', input.value));
+}
 for (const input of document.querySelectorAll('input[name="view"]')) {
   input.addEventListener('change', () => setOption('view', input.value));
 }
@@ -1721,6 +1777,10 @@ $('tool-convert').addEventListener('click', () => runConvert());
 $('inst-track').addEventListener('change', (e) => (e.target.dataset.chosen = '1'));
 $('inst-target').addEventListener('change', updateInstrumentButton);
 $('inst-convert').addEventListener('click', () => runInstrument());
+$('inst-low').addEventListener('change', (e) => {
+  options.lowOctave = e.target.value;
+  saveOptions();
+});
 $('range-from').addEventListener('change', (e) => setRange(Number(e.target.value), state.range.to || state.score.masterBars.length));
 $('range-to').addEventListener('change', (e) => setRange(state.range.from, Number(e.target.value)));
 $('range-all').addEventListener('click', () => setRange(1, state.score.masterBars.length));

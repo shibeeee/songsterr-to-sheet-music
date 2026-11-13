@@ -33,7 +33,7 @@ export const INSTRUMENTS = {
   piano: { name: 'Piano', short: 'Pno.', family: 'Keyboard', label: 'Piano (one staff, chords kept)', program: 0, clef: 'auto', written: 0, range: [21, 108], comfortable: [21, 108], chords: true }
 };
 
-const NOTE_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
+const NOTE_NAMES = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'];
 
 /** "E1", "B♭3": a pitch name with its octave (middle C is C4). */
 export function pitchName(midi) {
@@ -138,12 +138,14 @@ function uniqueName(score, name) {
 
 /**
  * Adds a part for `instrumentKey` made from track `trackIndex`.
- * @param {{ octave?: 'auto' | number }} options octave: 'auto', or a move in octaves (0 keeps the sound)
+ * @param {{ octave?: 'auto' | number, lowOctave?: number | null }} options octave: 'auto', or a move in
+ *   octaves (0 keeps the sound); lowOctave: notes at or below this pitch also show the note an octave
+ *   up, in parentheses, for players who can't reach the low one
  * @returns {{ index: number, name: string, octave: number, foldedUp: number, foldedDown: number,
  *   chordsReduced: number, deadNotes: number, notes: number, lowest: number | null, highest: number | null,
  *   uncomfortable: number }}
  */
-export function convertToInstrument(m, score, trackIndex, instrumentKey, { octave = 'auto' } = {}) {
+export function convertToInstrument(m, score, trackIndex, instrumentKey, { octave = 'auto', lowOctave = null } = {}) {
   const instrument = INSTRUMENTS[instrumentKey];
   if (!instrument) throw new Error(`Unknown instrument: ${instrumentKey}`);
   const source = score.tracks[trackIndex];
@@ -207,6 +209,9 @@ export function convertToInstrument(m, score, trackIndex, instrumentKey, { octav
     clef = sorted.length && sorted[sorted.length >> 1] < 60 ? 'F4' : 'G2';
   }
   const made = new Map(); // source note -> new note, for ties
+  const madeUpper = new Map(); // source note -> its optional octave-up note
+  report.octavesAdded = 0;
+  const addOctave = lowOctave != null && !instrument.chords;
   plan.forEach((beats, barIndex) => {
     const sourceBar = staff.bars[barIndex];
     const bar = new m.Bar();
@@ -247,6 +252,21 @@ export function convertToInstrument(m, score, trackIndex, instrumentKey, { octav
         }
         made.set(old, note);
         beat.addNote(note);
+        // A very low note also shows the note an octave up, in parentheses: the
+        // player picks whichever they can play.
+        if (addOctave && pitch <= lowOctave && pitch + 12 <= instrument.range[1]) {
+          const upper = new m.Note();
+          upper.octave = Math.floor((pitch + 12) / 12);
+          upper.tone = (pitch + 12) % 12;
+          upper.isGhost = true;
+          if (tie && old.tieOrigin && madeUpper.has(old.tieOrigin)) {
+            upper.isTieDestination = true;
+            upper.tieOrigin = madeUpper.get(old.tieOrigin);
+            madeUpper.get(old.tieOrigin).tieDestination = upper;
+          } else if (!tie) report.octavesAdded++;
+          madeUpper.set(old, upper);
+          beat.addNote(upper);
+        }
       }
       voice.addBeat(beat);
     }

@@ -391,6 +391,15 @@ export function findKey(harmony) {
   for (let i = 0; i < harmony.times.length; i++) {
     for (let k = 0; k < 12; k++) total[k] += harmony.mid[i * 12 + k] + harmony.bass[i * 12 + k];
   }
+  return keyFromChroma(total);
+}
+
+/**
+ * The key from how much each pitch class sounds (12 numbers, C first).
+ * Returns { tonic, minor, fifths, name, confidence } where confidence is the
+ * share of the music that fits the key's scale.
+ */
+export function keyFromChroma(total) {
   const sum = total.reduce((a, b) => a + b, 0) || 1;
   const MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11];
   const profileScore = (tonic, minor) => {

@@ -436,6 +436,15 @@
               <option value="-1">One octave down</option>
             </select>
           </div>
+          <div class="field" id="inst-low-field">
+            <label for="inst-low">Very low notes</label>
+            <select id="inst-low">
+              <option value="36">Also show an octave up: C2 and lower</option>
+              <option value="33">Also show an octave up: A1 and lower</option>
+              <option value="29">Also show an octave up: F1 and lower</option>
+              <option value="off">Just the low note</option>
+            </select>
+          </div>
           <button type="button" class="btn primary block" id="inst-convert">Make a tuba part</button>
           <p class="panel-note" id="inst-note"></p>
         </details>
@@ -446,6 +455,18 @@
             <label><input type="radio" name="view" value="both" /><span>Notes + Tab</span></label>
             <label><input type="radio" name="view" value="notes" /><span>Notes</span></label>
             <label><input type="radio" name="view" value="tab" /><span>Tab</span></label>
+          </div>
+          <div class="field">
+            <label for="opt-key">Key signature</label>
+            <select id="opt-key"></select>
+          </div>
+          <div class="field">
+            <span class="field-label">Notes between the white keys</span>
+            <div class="segmented" role="radiogroup" aria-label="Spell black-key notes as">
+              <label><input type="radio" name="accidentals" value="flats" /><span>Flats (B♭)</span></label>
+              <label><input type="radio" name="accidentals" value="sharps" /><span>Sharps (A♯)</span></label>
+              <label><input type="radio" name="accidentals" value="key" /><span>By key</span></label>
+            </div>
           </div>
           <div class="switches">
             <label class="switch"><input type="checkbox" id="opt-rhythm" /><span>Rhythm under tab</span></label>
