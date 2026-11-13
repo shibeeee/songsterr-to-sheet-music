@@ -2,6 +2,7 @@
 // and keyboard editing. All changes go through host.commit(), which records
 // undo history, rebuilds the score and re-renders.
 import * as ed from './editor.js';
+import { pitchName } from './instruments.js';
 
 const DURATION_LABELS = { 1: 'Whole', 2: 'Half', 4: 'Quarter', 8: 'Eighth', 16: '16th', 32: '32nd', 64: '64th' };
 const FRET_TYPING_WINDOW_MS = 700;
@@ -187,6 +188,15 @@ export function createEditUI(host) {
 
     // Note
     $('edit-note-group').hidden = !stringed;
+    // Parts without strings (tuba, trumpet...): the note's pitch.
+    const pitched = !stringed && !staff.isPercussion;
+    $('edit-pitch-group').hidden = !pitched;
+    if (pitched) {
+      const first = beat.notes[0];
+      $('edit-pitch').textContent = first ? pitchName(ed.notePitch(first) - staff.displayTranspositionPitch) : 'Rest (♯ or ♭ adds a note)';
+      $('edit-pitch').title = first && staff.displayTranspositionPitch ? `Written pitch (sounds ${pitchName(ed.notePitch(first))})` : '';
+      $('edit-pitch-remove').disabled = !first;
+    }
     if (stringed) {
       $('edit-string').textContent = stringLabel(staff, sel.string);
       $('edit-string-up').disabled = sel.string >= staff.tuning.length;
@@ -206,7 +216,10 @@ export function createEditUI(host) {
     setPressed($('edit-triplet'), beat.tupletNumerator === 3);
 
     // Techniques
+    // String techniques mean nothing to a tuba or a trumpet.
+    const STRING_ONLY = new Set(['hammer', 'slide', 'bend', 'palmMute', 'letRing', 'harmonic', 'dead']);
     for (const button of document.querySelectorAll('[data-effect]')) {
+      button.hidden = !stringed && STRING_ONLY.has(button.dataset.effect) && !staff.isPercussion;
       button.disabled = beat.isRest;
       setPressed(button, ed.effectState(m, score, sel, button.dataset.effect));
     }
@@ -267,6 +280,10 @@ export function createEditUI(host) {
       else if (/^\d+$/.test(value)) edit((score, s) => ed.setFret(m, score, s, Number(value)));
     });
     on('edit-remove-note', () => edit((score, s) => ed.deleteNote(m, score, s)));
+    for (const [id, semitones] of [['edit-octave-down', -12], ['edit-pitch-down', -1], ['edit-pitch-up', 1], ['edit-octave-up', 12]]) {
+      on(id, () => edit((score, s) => ed.shiftPitch(m, score, s, semitones)));
+    }
+    on('edit-pitch-remove', () => edit((score, s) => ed.deleteNote(m, score, s)));
     on('edit-rest', () => edit((score, s) => ed.makeRest(m, score, s)));
 
     for (const button of document.querySelectorAll('[data-duration]')) {
@@ -377,11 +394,17 @@ export function createEditUI(host) {
         return true;
       }
       case 'ArrowUp':
-        select({ ...sel, string: sel.string + 1 });
+      case 'ArrowDown': {
+        const up = e.key === 'ArrowUp';
+        const staff = ed.staffOf(score, sel);
+        // Parts without strings: up and down change the pitch (Shift: an octave).
+        if (staff && !ed.isStringed(staff) && !staff.isPercussion) {
+          edit((sc, s) => ed.shiftPitch(m, sc, s, (up ? 1 : -1) * (e.shiftKey ? 12 : 1)));
+          return true;
+        }
+        select({ ...sel, string: sel.string + (up ? 1 : -1) });
         return true;
-      case 'ArrowDown':
-        select({ ...sel, string: sel.string - 1 });
-        return true;
+      }
       case 'Delete':
       case 'Backspace':
         edit((sc, s) => ed.deleteNote(m, sc, s));

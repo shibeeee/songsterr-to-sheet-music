@@ -223,6 +223,44 @@ export function setFret(m, score, sel, fret) {
   return sel;
 }
 
+/** The pitch of a note in a part without strings (tuba, trumpet, piano...). */
+export function notePitch(note) {
+  return note.octave * 12 + note.tone;
+}
+
+/**
+ * Raises or lowers the selected note of a part without strings by
+ * `semitones`, along with the notes tied to it. On a rest, adds a note at the
+ * pitch of the note before it.
+ */
+export function shiftPitch(m, score, sel, semitones) {
+  const staff = staffOf(score, sel);
+  const beat = beatOf(score, sel);
+  if (!beat || !staff || isStringed(staff) || staff.isPercussion) return sel;
+  const set = (note, pitch) => {
+    const p = Math.max(12, Math.min(119, pitch));
+    note.octave = Math.floor(p / 12);
+    note.tone = p % 12;
+  };
+  if (!beat.notes.length) {
+    // A new note where the rest was, at the pitch of the note before it.
+    let previous = beat.previousBeat;
+    while (previous && !previous.notes.length) previous = previous.previousBeat;
+    const note = new m.Note();
+    set(note, previous ? notePitch(previous.notes[0]) : 48);
+    beat.addNote(note);
+    clearRest(beat);
+    return sel;
+  }
+  for (const note of beat.notes) {
+    let first = note;
+    while (first.isTieDestination && first.tieOrigin) first = first.tieOrigin;
+    const pitch = notePitch(first) + semitones;
+    for (let n = first; n; n = n.tieDestination) set(n, pitch);
+  }
+  return sel;
+}
+
 export function deleteNote(m, score, sel) {
   const beat = beatOf(score, sel);
   if (!beat) return sel;

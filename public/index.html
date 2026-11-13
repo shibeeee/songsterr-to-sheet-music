@@ -125,7 +125,7 @@
           <div class="feature">
             <svg class="icon" aria-hidden="true"><use href="#i-metronome" /></svg>
             <h2>Built for practice</h2>
-            <p>Playback with loops, count-in, metronome and a speed trainer. Edit any note, move to 4-string bass, find easier fingerings.</p>
+            <p>Playback with loops, count-in, metronome and a speed trainer. Edit any note, turn bass tabs into tuba parts (or trumpet, sax, cello…), find easier fingerings.</p>
           </div>
         </section>
 
@@ -182,6 +182,18 @@
                 <label class="mini-field">Fret <input id="edit-fret" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" /></label>
                 <button type="button" class="btn small" id="edit-remove-note">Remove note</button>
               </div>
+            </div>
+
+            <div class="edit-group" id="edit-pitch-group" hidden>
+              <h3>Note</h3>
+              <div class="edit-row pitch-row">
+                <span class="pitch-name" id="edit-pitch"></span>
+                <button type="button" class="btn small" id="edit-octave-down" title="An octave lower (Shift+↓)">−8va</button>
+                <button type="button" class="btn small" id="edit-pitch-down" title="A semitone lower (↓)">♭</button>
+                <button type="button" class="btn small" id="edit-pitch-up" title="A semitone higher (↑)">♯</button>
+                <button type="button" class="btn small" id="edit-octave-up" title="An octave higher (Shift+↑)">+8va</button>
+              </div>
+              <button type="button" class="btn small" id="edit-pitch-remove">Remove note</button>
             </div>
 
             <div class="edit-group">
@@ -402,6 +414,30 @@
           </div>
           <button type="button" class="btn block tool-btn" id="tool-convert" hidden>Convert to 4-string bass</button>
           <p class="panel-note" id="tool-note"></p>
+        </details>
+
+        <details class="panel" data-panel="instruments" id="instruments-panel" hidden open>
+          <summary><h2>Other instruments</h2></summary>
+          <p class="panel-note">Turn a part into music for another instrument, like a bass tab into a tuba part. It's added as a new track; the original stays as it is.</p>
+          <div class="field">
+            <label for="inst-track">From</label>
+            <select id="inst-track"></select>
+          </div>
+          <div class="field">
+            <label for="inst-target">To</label>
+            <select id="inst-target"></select>
+          </div>
+          <div class="field">
+            <label for="inst-octave">Octave</label>
+            <select id="inst-octave">
+              <option value="auto">Automatic (fit the instrument)</option>
+              <option value="0">Keep the same pitch</option>
+              <option value="1">One octave up</option>
+              <option value="-1">One octave down</option>
+            </select>
+          </div>
+          <button type="button" class="btn primary block" id="inst-convert">Make a tuba part</button>
+          <p class="panel-note" id="inst-note"></p>
         </details>
 
         <details class="panel" data-panel="notation" open>

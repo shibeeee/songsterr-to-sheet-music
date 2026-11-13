@@ -573,3 +573,7 @@ body.cursor-idle:not(.editing) .at-cursor-bar, body.cursor-idle:not(.editing) .a
   .paper { box-shadow: none; padding: 0; overflow: visible; }
   .at-cursor-bar, .at-cursor-beat, .at-selection, .edit-cursor, .edit-note-box, .edit-banner { display: none !important; }
 }
+
+/* Editing a part without strings: its pitch */
+.pitch-row { align-items: center; gap: 6px; flex-wrap: wrap; }
+.pitch-name { min-width: 44px; font-weight: 650; font-variant-numeric: tabular-nums; }

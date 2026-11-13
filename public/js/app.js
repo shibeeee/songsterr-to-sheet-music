@@ -20,6 +20,7 @@ import { createEditUI } from './edit-ui.js';
 import { createTranscribeUI } from './transcribe-ui.js';
 import { SOUND_SETS, fetchSound, isSoundCached } from './sound.js';
 import { optimizeFingering, convertToFourStringBass, canConvertToFourString, fourStringBlocker } from './fingering.js';
+import { INSTRUMENTS, convertToInstrument, suggestInstrument, pitchName, transpositionText } from './instruments.js';
 
 const $ = (id) => document.getElementById(id);
 // Resolve against the page so the app also works from a sub-path
@@ -52,7 +53,8 @@ const defaults = {
   panelHidden: false, // desktop: options panel collapsed
   maxFret: 24,
   fingerStyle: 'fewest', // what the fingering optimizer aims for
-  lowNotes: 'phrase', // 4-string conversion: move whole riffs, or only the low notes // frets on the player's instrument (for the optimizer)
+  lowNotes: 'phrase', // 4-string conversion: move whole riffs, or only the low notes
+  instrument: 'tuba', // the last instrument a part was made for
   tipDismissed: false,
   onlyShown: false, // mute tracks that aren't shown
   volume: 90
@@ -542,7 +544,11 @@ function describeTrack(track) {
   const staff = track.staves[0];
   if (!staff) return '';
   if (staff.isPercussion) return 'Drums';
-  if (!staff.tuning.length) return 'Notation';
+  if (!staff.tuning.length) {
+    // A wind or string part made here (or opened from a file): how it is written.
+    const text = transpositionText(-staff.displayTranspositionPitch);
+    return text[0].toUpperCase() + text.slice(1);
+  }
   const preset = alphaTab.model.Tuning.findTuning(staff.tuning);
   const names = [...staff.tuning].reverse().map((v) => alphaTab.model.Tuning.getTextForTuning(v, false)).join(' ');
   const tuning = preset && preset.name ? preset.name.replace(/ Tuning$/i, '') : names;
@@ -592,6 +598,20 @@ function buildTrackList() {
         runConvert(index);
       });
       names.append(convert);
+    }
+    if (!track.staves[0]?.isPercussion && track.staves[0]?.tuning.length && suggestInstrument(track) === 'tuba') {
+      const tuba = Object.assign(document.createElement('button'), {
+        type: 'button',
+        className: 'linklike track-action',
+        textContent: 'Make a tuba part'
+      });
+      tuba.title = 'Add a tuba part with the same notes, in bass clef';
+      tuba.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        runInstrument(index, 'tuba', 'auto');
+      });
+      names.append(tuba);
     }
 
     const mute = trackToggle(state.muted.has(index) ? 'i-muted' : 'i-volume', 'Mute', state.muted.has(index), () => {
@@ -767,6 +787,7 @@ function stringedTracks() {
 
 function syncTools() {
   if (!state.score) return;
+  syncInstruments();
   const tracks = stringedTracks();
   $('fingering-panel').hidden = tracks.length === 0;
   if (!tracks.length) return;
@@ -840,6 +861,75 @@ function runConvert(index = Number($('tool-track').value)) {
   if (report.dropped) parts.push(`${report.dropped} note${report.dropped === 1 ? '' : 's'} left out (too many at once)`);
   toast(parts.join('. '), { label: 'Undo', run: undoEdit });
   ensureVisible(index);
+}
+
+// ---------------------------------------------------------------------------
+// Other instruments
+// ---------------------------------------------------------------------------
+
+function syncInstruments() {
+  const tracks = state.score.tracks.filter((t) => t.staves[0] && !t.staves[0].isPercussion);
+  $('instruments-panel').hidden = tracks.length === 0;
+  if (!tracks.length) return;
+  const from = $('inst-track');
+  const keep = Number(from.value);
+  from.replaceChildren(...tracks.map((t) => Object.assign(document.createElement('option'), { value: String(t.index), textContent: t.name || `Track ${t.index + 1}` })));
+  // The user's pick, else a bass (the usual reason to be here), else a shown track.
+  const bass = tracks.find((t) => t.staves[0].tuning.length && suggestInstrument(t) === 'tuba');
+  const preferred = tracks.find((t) => t.index === keep && from.dataset.chosen) || bass || tracks.find((t) => state.visible.includes(t.index)) || tracks[0];
+  from.value = String(preferred.index);
+  const to = $('inst-target');
+  if (!to.options.length) {
+    const groups = new Map();
+    for (const [key, inst] of Object.entries(INSTRUMENTS)) {
+      if (!groups.has(inst.family)) groups.set(inst.family, Object.assign(document.createElement('optgroup'), { label: inst.family }));
+      groups.get(inst.family).append(Object.assign(document.createElement('option'), { value: key, textContent: inst.label }));
+    }
+    to.replaceChildren(...groups.values());
+    to.value = options.instrument in INSTRUMENTS ? options.instrument : 'tuba';
+  }
+  updateInstrumentButton();
+}
+
+function updateInstrumentButton() {
+  const inst = INSTRUMENTS[$('inst-target').value];
+  if (!inst) return;
+  // "an E♭ tuba", "a euphonium", "a trumpet"
+  const name = inst.name.replace(/ in [A-G]♭?$/, '');
+  const spoken = /^[A-G][♭♯] /.test(name) ? name.slice(0, 3) + name.slice(3).toLowerCase() : name.toLowerCase();
+  const article = /^(eu|uni)/i.test(spoken) ? 'a' : /^[aeiou]|^[AEF][♭♯ ]/i.test(spoken) ? 'an' : 'a';
+  $('inst-convert').textContent = `Make ${article} ${spoken} part`;
+  const [low, high] = inst.comfortable;
+  const clef = { F4: 'bass', G2: 'treble', C3: 'alto', auto: 'bass or treble' }[inst.clef];
+  const reads = `Reads ${clef} clef, ${transpositionText(inst.written)}.`;
+  $('inst-note').textContent = `${reads} Comfortable range about ${pitchName(low)} to ${pitchName(high)}. ${inst.chords ? 'Chords are kept.' : 'It plays one note at a time, so chords become their ' + ((low + high) / 2 < 55 ? 'lowest' : 'top') + ' note.'}`;
+}
+
+function runInstrument(index = Number($('inst-track').value), key = $('inst-target').value, octave = $('inst-octave').value) {
+  let report = null;
+  commitEdit((score, m) => {
+    report = convertToInstrument(m, score, index, key, { octave: octave === 'auto' ? 'auto' : Number(octave) });
+    return undefined;
+  });
+  if (!report) return;
+  const inst = INSTRUMENTS[key];
+  const source = state.score.tracks[index]?.name || 'the part';
+  const parts = [`Added ${report.name}, from ${source}`];
+  if (report.octave) parts.push(`moved ${Math.abs(report.octave)} octave${Math.abs(report.octave) === 1 ? '' : 's'} ${report.octave > 0 ? 'up' : 'down'} to fit`);
+  const folded = report.foldedUp + report.foldedDown;
+  if (folded) parts.push(`${folded} note${folded === 1 ? '' : 's'} moved an octave to stay in range`);
+  if (report.chordsReduced) parts.push(`${report.chordsReduced} chord${report.chordsReduced === 1 ? '' : 's'} played as one note`);
+  if (report.lowest != null) parts.push(`range ${pitchName(report.lowest)} to ${pitchName(report.highest)}${report.uncomfortable ? ` (${report.uncomfortable} note${report.uncomfortable === 1 ? '' : 's'} outside the easy range)` : ''}`);
+  // Show the new part on its own; the other tracks are a tick away.
+  state.visible = [report.index];
+  buildTrackList();
+  render();
+  rememberView();
+  toast(`${parts.join(', ')}.`, { label: 'Undo', run: undoEdit });
+  if (inst) {
+    options.instrument = key;
+    saveOptions();
+  }
 }
 
 /** Shows the track that was just changed, so the result is on screen. */
@@ -1628,6 +1718,9 @@ $('tool-track').addEventListener('change', (e) => {
 });
 $('tool-optimize').addEventListener('click', () => runOptimize());
 $('tool-convert').addEventListener('click', () => runConvert());
+$('inst-track').addEventListener('change', (e) => (e.target.dataset.chosen = '1'));
+$('inst-target').addEventListener('change', updateInstrumentButton);
+$('inst-convert').addEventListener('click', () => runInstrument());
 $('range-from').addEventListener('change', (e) => setRange(Number(e.target.value), state.range.to || state.score.masterBars.length));
 $('range-to').addEventListener('change', (e) => setRange(state.range.from, Number(e.target.value)));
 $('range-all').addEventListener('click', () => setRange(1, state.score.masterBars.length));
